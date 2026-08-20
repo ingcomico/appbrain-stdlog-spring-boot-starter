@@ -1,6 +1,5 @@
 package appbrain.stdlog.autoconfig;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import appbrain.stdlog.config.StdlogProperties;
 import appbrain.stdlog.web.ControllerBodyAndOutLoggingFilter;
 import appbrain.stdlog.web.RequestIdMdcFilter;
@@ -9,6 +8,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Auto-configuración principal del starter: registra los filtros de logging HTTP.

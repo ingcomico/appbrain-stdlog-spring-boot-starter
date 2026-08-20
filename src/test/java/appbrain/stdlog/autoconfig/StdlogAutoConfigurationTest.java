@@ -2,12 +2,12 @@ package appbrain.stdlog.autoconfig;
 
 import appbrain.stdlog.web.ControllerBodyAndOutLoggingFilter;
 import appbrain.stdlog.web.RequestIdMdcFilter;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import tools.jackson.databind.ObjectMapper;
 
 class StdlogAutoConfigurationTest {
 

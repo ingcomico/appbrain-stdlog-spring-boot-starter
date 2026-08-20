@@ -1,6 +1,5 @@
 package appbrain.stdlog.web;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import appbrain.stdlog.config.StdlogLevel;
 import appbrain.stdlog.config.StdlogProperties;
 import appbrain.stdlog.core.StdlogEmitter;
@@ -21,6 +20,8 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.LinkedHashMap;
 import java.util.Map;
+
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Filtro principal de logging de requests y responses HTTP ({@code CONTROLLER_HTTP}).
