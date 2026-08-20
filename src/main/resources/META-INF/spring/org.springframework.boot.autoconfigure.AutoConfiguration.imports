@@ -1,0 +1,5 @@
+appbrain.stdlog.autoconfig.StdlogAutoConfiguration
+appbrain.stdlog.autoconfig.StdlogWebMvcAutoConfiguration
+appbrain.stdlog.autoconfig.StdlogRestClientAutoConfiguration
+appbrain.stdlog.autoconfig.StdlogJdbcAutoConfiguration
+appbrain.stdlog.autoconfig.StdlogErrorAutoConfiguration
