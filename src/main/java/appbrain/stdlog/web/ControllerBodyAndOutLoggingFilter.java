@@ -125,7 +125,8 @@ public class ControllerBodyAndOutLoggingFilter extends OncePerRequestFilter {
             return;
         }
 
-        ContentCachingRequestWrapper requestWrapper = new ContentCachingRequestWrapper(req);
+        ContentCachingRequestWrapper requestWrapper =
+                new ContentCachingRequestWrapper(req, props.getController().getMaxRequestBodyBytes());
         ContentCachingResponseWrapper responseWrapper = new ContentCachingResponseWrapper(res);
 
         try {

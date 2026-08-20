@@ -229,7 +229,7 @@ public class StdlogClientHttpInterceptor implements ClientHttpRequestInterceptor
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
-        for (Map.Entry<String, List<String>> e : headers.entrySet()) {
+        for (Map.Entry<String, List<String>> e : headers.headerSet()) {
             if (e.getKey() == null) continue;
 
             String key = e.getKey().toLowerCase(Locale.ROOT);
