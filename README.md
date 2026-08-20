@@ -3,7 +3,7 @@
 Starter de logging estructurado (JSON) para aplicaciones Spring Boot. Emite logs bajo el schema `stdlog` para:
 
 - **Controller HTTP**: `CONTROLLER_HTTP` (IN / OUT)
-- **HTTP Client** (`RestTemplate`): `CLIENT_HTTP` (single-log `direction=IN`)
+- **HTTP Client** (`RestTemplate` y `RestClient`): `CLIENT_HTTP` (single-log `direction=IN`)
 - **JDBC** (datasource-proxy): `CLIENT_DB` (single-log `direction=OUT`)
 - **Custom / negocio**: eventos definidos por la app (`StdlogCustom`)
 - **Evento extra por excepción MVC**: `event=WARN|ERROR` (según status final 4xx/5xx)
@@ -34,7 +34,7 @@ Starter de logging estructurado (JSON) para aplicaciones Spring Boot. Emite logs
 <dependency>
   <groupId>appbrain</groupId>
   <artifactId>appbrain-stdlog-spring-boot-starter</artifactId>
-  <version>1.0.2-SNAPSHOT</version>
+  <version>1.0.0</version>
 </dependency>
 ```
 
@@ -361,15 +361,18 @@ StdlogCustom.error("UPSTREAM_CALL", "TIMEOUT", Map.of("peer", "users"), exceptio
 
 ### 7.1 Estrategia (single-log)
 
-Se emite un único log por llamada HTTP saliente hecha con `RestTemplate`:
+Se emite un único log por llamada HTTP saliente hecha con `RestTemplate` o
+`RestClient`:
 - `event=CLIENT_HTTP`, `direction=IN`
 - Incluye request + response:
   - request headers y (si stdlog está en DEBUG) request body
   - response headers y (si stdlog está en DEBUG) response body
 - En PROD puede filtrar para emitir solo failures (>=400)
 
-`StdlogClientHttpInterceptor` implementa `ClientHttpRequestInterceptor` (interfaz
-pública de Spring), por lo que no depende de ningún cliente HTTP propietario.
+`StdlogClientHttpInterceptor` implementa `ClientHttpRequestInterceptor`, interfaz
+pública compartida por `RestTemplate` y `RestClient`, por lo que ambos clientes
+generan el mismo payload `CLIENT_HTTP` y usan la misma configuración
+`stdlog.restclient.*`.
 
 ### 7.2 Ejemplo esperado
 
@@ -407,7 +410,42 @@ pública de Spring), por lo que no depende de ningún cliente HTTP propietario.
 | `capture-source` | Si `true`, captura caller (stacktrace-walk) — costo CPU |
 | `capture-call-id` | Si `true`, genera `call_id` por llamada |
 
-### 7.4 Integración con `RestTemplate`
+### 7.4 Integración con `RestClient`
+
+**Caso recomendado — `RestClient` construido via `RestClient.Builder`:**
+el starter registra un `RestClientCustomizer` que agrega automáticamente el
+interceptor a cualquier `RestClient` construido a partir del builder
+autoconfigurado por Spring Boot:
+
+```java
+@Bean
+public RestClient restClient(RestClient.Builder builder) {
+    return builder.build();
+}
+```
+
+La captura del body de respuesta no impide que luego la aplicación lea el body
+normalmente con `.retrieve().body(...)`; el starter devuelve internamente una
+respuesta re-leíble cuando necesita capturar el body para el log.
+
+**Caso manual — `RestClient` construido sin el builder de Spring Boot:**
+inyectá el interceptor y registralo vos mismo:
+
+```java
+@Autowired
+private StdlogClientHttpInterceptor stdlogClientHttpInterceptor;
+
+@Bean
+public RestClient restClient() {
+    return RestClient.builder()
+            .requestInterceptor(stdlogClientHttpInterceptor)
+            .build();
+}
+```
+
+Sin este registro, `CLIENT_HTTP` no aparece aunque `stdlog.restclient.enabled=true`.
+
+### 7.5 Integración con `RestTemplate`
 
 **Caso recomendado — `RestTemplate` construido via `RestTemplateBuilder`:**
 el starter registra un `RestTemplateCustomizer` que agrega automáticamente el
@@ -557,7 +595,7 @@ Incluye:
 
 | Síntoma | Causa probable | Solución |
 |---------|----------------|----------|
-| `CLIENT_HTTP` no aparece aunque `restclient.enabled: true` | El `RestTemplate` no se construyó via `RestTemplateBuilder` y el interceptor no fue registrado a mano | Usar `RestTemplateBuilder` o registrar el interceptor manualmente como se muestra en la sección 7.4 |
+| `CLIENT_HTTP` no aparece aunque `restclient.enabled: true` | El cliente no se construyó via `RestClient.Builder`/`RestTemplateBuilder` autoconfigurado por Spring Boot, o el interceptor no fue registrado a mano | Usar los builders autoconfigurados o registrar `StdlogClientHttpInterceptor` manualmente como se muestra en las secciones 7.4 y 7.5 |
 | `bodyCapture: SKIPPED_CONTENT_TYPE` | El content type no está permitido o `allowed-content-types` está vacío | Agregar explícitamente el content type esperado, por ejemplo `application/json` |
 | Logs de restclient o JDBC no aparecen | El nivel del evento está por debajo de `logging.level.stdlog` | Subir la severidad a `INFO` o configurar `logging.level.stdlog: DEBUG` |
 | El body de restclient no aparece | El logger `stdlog` no está en `DEBUG` | Configurar `logging.level.stdlog: DEBUG` |

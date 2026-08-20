@@ -102,6 +102,23 @@ class StdlogClientHttpInterceptorTest {
     }
 
     @Test
+    void shouldReturnReadableResponseBodyAfterLoggingIt() throws IOException {
+        appender = StdlogTestSupport.attachStdlogAppender(Level.DEBUG);
+        StdlogProperties props = props();
+
+        StdlogClientHttpInterceptor interceptor = new StdlogClientHttpInterceptor(props);
+        ClientHttpResponse response = interceptor.intercept(get("https://api.example.com/orders"),
+                new byte[0], (req, body) -> jsonResponse(200, "{\"b\":2}"));
+
+        String bodyAfterLogging = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
+
+        assertEquals("{\"b\":2}", bodyAfterLogging);
+        Map<String, Object> payload = onlyPayload();
+        Map<?, ?> resNode = (Map<?, ?>) payload.get("response");
+        assertEquals("{\"b\":2}", resNode.get("body"));
+    }
+
+    @Test
     void shouldUseFailure4xxLevelFor404() throws IOException {
         appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
         StdlogProperties props = props();

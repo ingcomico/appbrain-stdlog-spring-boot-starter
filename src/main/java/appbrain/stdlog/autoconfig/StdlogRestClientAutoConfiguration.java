@@ -6,24 +6,26 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.client.RestClientCustomizer;
 import org.springframework.boot.web.client.RestTemplateCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.client.BufferingClientHttpRequestFactory;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestTemplate;
+
+import java.util.List;
 
 /**
  * Auto-configuración del módulo de logging de llamadas HTTP salientes hechas con
- * {@link RestTemplate}.
+ * {@link RestTemplate} o {@link RestClient}.
  *
- * <p>Registra {@code StdlogClientHttpInterceptor} y un {@link RestTemplateCustomizer} que
- * lo agrega automáticamente a cualquier {@code RestTemplate} construido a partir del
- * {@code RestTemplateBuilder} autoconfigurado por Spring Boot, además de envolver el
- * request factory con buffering para que el body de la respuesta pueda leerse tanto en
- * el log como en los {@code HttpMessageConverter} de la aplicación.</p>
+ * <p>Registra {@code StdlogClientHttpInterceptor}, un {@link RestTemplateCustomizer}
+ * y un {@link RestClientCustomizer} para que los clientes construidos a partir de los
+ * builders autoconfigurados por Spring Boot emitan el mismo evento {@code CLIENT_HTTP}.</p>
  *
- * <p>Si el consumidor construye su {@code RestTemplate} manualmente (sin pasar por
- * {@code RestTemplateBuilder}), debe inyectar {@code StdlogClientHttpInterceptor} y
- * registrarlo (más el buffering request factory) a mano.</p>
+ * <p>Si el consumidor construye clientes manualmente (sin pasar por los builders de
+ * Spring Boot), debe inyectar {@code StdlogClientHttpInterceptor} y registrarlo a mano.</p>
  *
  * <p>Solo activa cuando {@code stdlog.restclient.enabled=true} (default).</p>
  */
@@ -41,8 +43,21 @@ public class StdlogRestClientAutoConfiguration {
     @ConditionalOnClass(RestTemplate.class)
     public RestTemplateCustomizer stdlogRestTemplateCustomizer(StdlogClientHttpInterceptor interceptor) {
         return restTemplate -> {
-            restTemplate.getInterceptors().add(interceptor);
+            addIfAbsent(restTemplate.getInterceptors(), interceptor);
             restTemplate.setRequestFactory(new BufferingClientHttpRequestFactory(restTemplate.getRequestFactory()));
         };
+    }
+
+    @Bean
+    @ConditionalOnClass(RestClient.class)
+    public RestClientCustomizer stdlogRestClientCustomizer(StdlogClientHttpInterceptor interceptor) {
+        return restClientBuilder -> restClientBuilder.requestInterceptors(interceptors -> addIfAbsent(interceptors, interceptor));
+    }
+
+    private static void addIfAbsent(List<ClientHttpRequestInterceptor> interceptors,
+            StdlogClientHttpInterceptor interceptor) {
+        if (!interceptors.contains(interceptor)) {
+            interceptors.add(interceptor);
+        }
     }
 }

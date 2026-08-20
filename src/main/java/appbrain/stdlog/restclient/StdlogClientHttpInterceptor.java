@@ -16,7 +16,9 @@ import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.util.StreamUtils;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -24,7 +26,7 @@ import java.util.stream.Collectors;
 
 /**
  * Interceptor de llamadas HTTP salientes hechas via {@link org.springframework.web.client.RestTemplate}
- * ({@code CLIENT_HTTP direction=IN}).
+ * o {@link org.springframework.web.client.RestClient} ({@code CLIENT_HTTP direction=IN}).
  *
  * <p>Estrategia <em>single-log</em>: se emite un único evento por llamada saliente, combinando
  * datos de request y response en el mismo JSON. {@link ClientHttpRequestInterceptor} entrega
@@ -35,10 +37,9 @@ import java.util.stream.Collectors;
  * ({@code logger.isDebugEnabled()}). Si el body está comprimido (gzip/deflate), se descomprime
  * antes de loguear via {@link StdlogHttpBodyDecoder}.</p>
  *
- * <p>Para que el body de la respuesta pueda leerse tanto acá como por los
- * {@code HttpMessageConverter} de la aplicación, el {@code RestTemplate} debe usar un
- * request factory con buffering (ej. {@link org.springframework.http.client.BufferingClientHttpRequestFactory}).
- * El {@code RestTemplateCustomizer} que registra este starter lo configura automáticamente.</p>
+ * <p>Cuando se captura el body de la respuesta, el interceptor retorna un wrapper
+ * re-leíble para que los {@code HttpMessageConverter} de la aplicación puedan consumirlo
+ * después del log.</p>
  *
  * <p>En modo {@code PROD} con {@code logOnlyOnFailureInProd=true}, las respuestas
  * exitosas (status {@code < 400}) se filtran completamente para reducir volumen de logs.</p>
@@ -92,7 +93,7 @@ public class StdlogClientHttpInterceptor implements ClientHttpRequestInterceptor
             boolean isProd = StdlogModeResolver.isProd(props);
             if (!(isProd && props.getRestclient().isLogOnlyOnFailureInProd() && !failure)) {
                 StdlogLevel level = levelForStatus(status);
-                emit(request, body, response, status, elapsedMs, failure, level, null, requestId, operation, callId, source);
+                response = emit(request, body, response, status, elapsedMs, failure, level, null, requestId, operation, callId, source);
             }
             return response;
         } catch (IOException e) {
@@ -109,7 +110,7 @@ public class StdlogClientHttpInterceptor implements ClientHttpRequestInterceptor
         return props.getRestclient().getInLevelSuccess();
     }
 
-    private void emit(HttpRequest request,
+    private ClientHttpResponse emit(HttpRequest request,
             byte[] requestBody,
             ClientHttpResponse response,
             int status,
@@ -122,6 +123,7 @@ public class StdlogClientHttpInterceptor implements ClientHttpRequestInterceptor
             String callId,
             Map<String, Object> source) {
 
+        ClientHttpResponse responseToReturn = response;
         Map<String, Object> stdlog = new LinkedHashMap<>();
         stdlog.put("event", "CLIENT_HTTP");
         stdlog.put("direction", "IN");
@@ -175,6 +177,7 @@ public class StdlogClientHttpInterceptor implements ClientHttpRequestInterceptor
 
                 if (STDLOG.isDebugEnabled()) {
                     byte[] raw = StreamUtils.copyToByteArray(response.getBody());
+                    responseToReturn = new CachedBodyClientHttpResponse(response, raw);
                     if (raw.length > 0) {
                         String contentEncoding = response.getHeaders().getFirst("content-encoding");
                         Charset charset = charsetOf(response.getHeaders().getContentType());
@@ -193,6 +196,7 @@ public class StdlogClientHttpInterceptor implements ClientHttpRequestInterceptor
 
         if (t != null) StdlogEmitter.emit(STDLOG, level, stdlog, t);
         else StdlogEmitter.emit(STDLOG, level, stdlog);
+        return responseToReturn;
     }
 
     private static Charset charsetOf(MediaType contentType) {
@@ -249,5 +253,40 @@ public class StdlogClientHttpInterceptor implements ClientHttpRequestInterceptor
         if (a != null && !a.isBlank()) return a;
         if (b != null && !b.isBlank()) return b;
         return null;
+    }
+
+    private static final class CachedBodyClientHttpResponse implements ClientHttpResponse {
+        private final ClientHttpResponse delegate;
+        private final byte[] body;
+
+        private CachedBodyClientHttpResponse(ClientHttpResponse delegate, byte[] body) {
+            this.delegate = delegate;
+            this.body = body == null ? new byte[0] : body;
+        }
+
+        @Override
+        public org.springframework.http.HttpStatusCode getStatusCode() throws IOException {
+            return delegate.getStatusCode();
+        }
+
+        @Override
+        public String getStatusText() throws IOException {
+            return delegate.getStatusText();
+        }
+
+        @Override
+        public void close() {
+            delegate.close();
+        }
+
+        @Override
+        public InputStream getBody() {
+            return new ByteArrayInputStream(body);
+        }
+
+        @Override
+        public HttpHeaders getHeaders() {
+            return delegate.getHeaders();
+        }
     }
 }

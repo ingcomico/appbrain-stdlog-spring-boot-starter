@@ -4,9 +4,11 @@ import appbrain.stdlog.restclient.StdlogClientHttpInterceptor;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.web.client.RestClientCustomizer;
 import org.springframework.boot.web.client.RestTemplateCustomizer;
 import org.springframework.http.client.BufferingClientHttpRequestFactory;
 import org.springframework.http.client.support.HttpAccessor;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestTemplate;
 
 import java.lang.reflect.Field;
@@ -23,6 +25,7 @@ class StdlogRestClientAutoConfigurationTest {
         runner.run(context -> {
             assertThat(context).hasSingleBean(StdlogClientHttpInterceptor.class);
             assertThat(context).hasSingleBean(RestTemplateCustomizer.class);
+            assertThat(context).hasSingleBean(RestClientCustomizer.class);
         });
     }
 
@@ -32,6 +35,7 @@ class StdlogRestClientAutoConfigurationTest {
                 .run(context -> {
                     assertThat(context).doesNotHaveBean(StdlogClientHttpInterceptor.class);
                     assertThat(context).doesNotHaveBean(RestTemplateCustomizer.class);
+                    assertThat(context).doesNotHaveBean(RestClientCustomizer.class);
                 });
     }
 
@@ -54,5 +58,21 @@ class StdlogRestClientAutoConfigurationTest {
         Field field = HttpAccessor.class.getDeclaredField("requestFactory");
         field.setAccessible(true);
         assertThat(field.get(restTemplate)).isInstanceOf(BufferingClientHttpRequestFactory.class);
+    }
+
+    @Test
+    void restClientCustomizerShouldAddInterceptor() {
+        RestClientCustomizer[] customizerHolder = new RestClientCustomizer[1];
+        StdlogClientHttpInterceptor[] interceptorHolder = new StdlogClientHttpInterceptor[1];
+        runner.run(context -> {
+            customizerHolder[0] = context.getBean(RestClientCustomizer.class);
+            interceptorHolder[0] = context.getBean(StdlogClientHttpInterceptor.class);
+        });
+
+        RestClient.Builder builder = RestClient.builder();
+        customizerHolder[0].customize(builder);
+
+        builder.requestInterceptors(interceptors ->
+                assertThat(interceptors).contains(interceptorHolder[0]));
     }
 }
