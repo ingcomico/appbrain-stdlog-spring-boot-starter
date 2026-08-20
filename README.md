@@ -34,11 +34,55 @@ Starter de logging estructurado (JSON) para aplicaciones Spring Boot. Emite logs
 <dependency>
   <groupId>appbrain</groupId>
   <artifactId>appbrain-stdlog-spring-boot-starter</artifactId>
-  <version>1.0.0</version>
+  <version>1.0.0-local</version>
 </dependency>
 ```
 
 Todas las dependencias del starter son públicas y se resuelven desde Maven Central (repositorio por defecto de Maven); no se requiere ningún repositorio privado adicional.
+
+### 1.2 Publicación local de prueba
+
+El proyecto está configurado para publicar una versión local en un repositorio Maven
+dentro de la carpeta `release/` de la raíz del proyecto. Para construir y publicar:
+
+```bash
+mvn clean deploy
+```
+
+El artefacto queda disponible en:
+
+```text
+release/appbrain/appbrain-stdlog-spring-boot-starter/1.0.0-local/
+```
+
+Coordenadas Maven:
+
+```text
+appbrain:appbrain-stdlog-spring-boot-starter:1.0.0-local
+```
+
+Para consumir esta versión desde otro proyecto Maven, agrega el repositorio local:
+
+```xml
+<repositories>
+  <repository>
+    <id>appbrain-stdlog-local-release</id>
+    <url>file:///Users/ingcomico/IdeaProjects/appbrain-stdlog-spring-boot-starter/release</url>
+  </repository>
+</repositories>
+```
+
+y declara la dependencia:
+
+```xml
+<dependency>
+  <groupId>appbrain</groupId>
+  <artifactId>appbrain-stdlog-spring-boot-starter</artifactId>
+  <version>1.0.0-local</version>
+</dependency>
+```
+
+La carpeta `release/` no se versiona en Git; se regenera ejecutando `mvn clean deploy`.
 
 ---
 

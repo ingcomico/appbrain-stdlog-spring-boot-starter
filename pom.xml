@@ -6,7 +6,7 @@
 
     <groupId>appbrain</groupId>
     <artifactId>appbrain-stdlog-spring-boot-starter</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.0-local</version>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
@@ -80,6 +80,13 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <distributionManagement>
+        <repository>
+            <id>local-release</id>
+            <url>file://${maven.multiModuleProjectDirectory}/release</url>
+        </repository>
+    </distributionManagement>
 
     <build>
 
