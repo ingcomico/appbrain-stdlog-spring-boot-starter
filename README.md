@@ -8,6 +8,12 @@ Starter de logging estructurado (JSON) para aplicaciones Spring Boot. Emite logs
 - **Custom / negocio**: eventos definidos por la app (`StdlogCustom`)
 - **Evento extra por excepción MVC**: `event=WARN|ERROR` (según status final 4xx/5xx)
 
+Todos los eventos emitidos por la librería pasan por `StdlogEmitter` y, si existe
+contexto de tracing activo, incluyen `trace_id` y `span_id` dentro de `stdlog`.
+La extracción intenta primero MDC (`traceId`/`spanId`) y luego OpenTelemetry API
+si está disponible en el classpath. Si no hay tracing activo, esos campos se
+omiten sin afectar el log.
+
 ---
 
 ## Tabla de contenido
@@ -394,6 +400,7 @@ StdlogCustom.error("UPSTREAM_CALL", "TIMEOUT", Map.of("peer", "users"), exceptio
 ```
 
 > `operation` y `request_id` aparecen si existe MDC (por ejemplo dentro de un request HTTP).
+> `trace_id` y `span_id` aparecen automáticamente cuando hay contexto de tracing activo.
 
 ---
 
@@ -604,6 +611,7 @@ Cuando hay una excepción real en MVC, se emite un evento adicional:
 Incluye:
 
 - `request_id`, `operation`, `route`
+- `trace_id`, `span_id` cuando hay contexto de tracing activo
 - `http.status`
 - `error.app_trace`, `error.type`, `error.message`
 - `error.stack_trace` (texto clásico cliqueable en IDE)

@@ -154,6 +154,28 @@ class ControllerBodyAndOutLoggingFilterBehaviorTest {
     }
 
     @Test
+    void shouldKeepTraceAndSpanIdsCapturedBeforeMdcIsCleared() throws Exception {
+        appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
+        MDC.put("traceId", "trace-controller");
+        MDC.put("spanId", "span-controller");
+        StdlogProperties props = noBodyProps();
+
+        ControllerBodyAndOutLoggingFilter filter = filter(props);
+        filter.doFilter(new MockHttpServletRequest("GET", "/orders"), new MockHttpServletResponse(), (r, s) -> {
+            MDC.remove("traceId");
+            MDC.remove("spanId");
+            ((HttpServletResponse) s).setStatus(200);
+        });
+
+        Map<String, Object> in = payload(0);
+        Map<String, Object> out = payload(1);
+        assertEquals("trace-controller", in.get("trace_id"));
+        assertEquals("span-controller", in.get("span_id"));
+        assertEquals("trace-controller", out.get("trace_id"));
+        assertEquals("span-controller", out.get("span_id"));
+    }
+
+    @Test
     void shouldComputeNonNegativeElapsedMs() throws Exception {
         appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
         StdlogProperties props = noBodyProps();

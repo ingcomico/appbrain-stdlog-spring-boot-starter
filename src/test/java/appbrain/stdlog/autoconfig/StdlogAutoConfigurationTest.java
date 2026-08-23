@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.core.Ordered;
 import tools.jackson.databind.ObjectMapper;
 
 class StdlogAutoConfigurationTest {
@@ -19,6 +20,11 @@ class StdlogAutoConfigurationTest {
                 .run(context -> {
                     assertThatContextHasFilterBean(context, "requestIdMdcFilter", RequestIdMdcFilter.class);
                     assertThatContextHasFilterBean(context, "stdlogControllerFilter", ControllerBodyAndOutLoggingFilter.class);
+
+                    FilterRegistrationBean<?> requestId = (FilterRegistrationBean<?>) context.getBean("requestIdMdcFilter");
+                    FilterRegistrationBean<?> controller = (FilterRegistrationBean<?>) context.getBean("stdlogControllerFilter");
+                    org.assertj.core.api.Assertions.assertThat(requestId.getOrder()).isEqualTo(Integer.MIN_VALUE);
+                    org.assertj.core.api.Assertions.assertThat(controller.getOrder()).isEqualTo(Ordered.LOWEST_PRECEDENCE);
                 });
     }
 

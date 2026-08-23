@@ -64,6 +64,39 @@ class StdlogEmitterTest {
     }
 
     @Test
+    void shouldAddTraceAndSpanIdsFromMdcWithoutMutatingOriginalPayload() {
+        appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
+        MDC.put("traceId", "trace-123");
+        MDC.put("spanId", "span-456");
+
+        Map<String, Object> immutablePayload = Map.of("event", "WITH_TRACE");
+        StdlogEmitter.emit(STDLOG, StdlogLevel.INFO, immutablePayload);
+
+        Map<String, Object> payload = StdlogTestSupport.stdlogPayload(appender.list.get(0));
+        assertEquals("trace-123", payload.get("trace_id"));
+        assertEquals("span-456", payload.get("span_id"));
+        assertFalse(immutablePayload.containsKey("trace_id"));
+        assertFalse(immutablePayload.containsKey("span_id"));
+    }
+
+    @Test
+    void shouldKeepExplicitTraceAndSpanIdsFromPayload() {
+        appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
+        MDC.put("traceId", "trace-from-mdc");
+        MDC.put("spanId", "span-from-mdc");
+
+        StdlogEmitter.emit(STDLOG, StdlogLevel.INFO, Map.of(
+                "event", "WITH_EXPLICIT_TRACE",
+                "trace_id", "trace-from-payload",
+                "span_id", "span-from-payload"
+        ));
+
+        Map<String, Object> payload = StdlogTestSupport.stdlogPayload(appender.list.get(0));
+        assertEquals("trace-from-payload", payload.get("trace_id"));
+        assertEquals("span-from-payload", payload.get("span_id"));
+    }
+
+    @Test
     void shouldNoOpWhenLoggerIsNull() {
         appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
         assertDoesNotThrow(() -> StdlogEmitter.emit(null, StdlogLevel.INFO, Map.of("event", "X")));
