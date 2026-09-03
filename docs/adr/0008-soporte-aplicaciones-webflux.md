@@ -8,7 +8,7 @@ Aceptado
 > hace **por fases** (ver "Plan de fases"); cada fase es una PR revisable y puede refinar
 > detalles de diseño.
 >
-> **Estado de fases:** Fase 1 **hecha**. Fase 2 **hecha** (WebClient lee el Reactor Context y resuelve `operation` desde el `ServerWebExchange` del Context; `StdlogWebClientAutoConfiguration` abierta a cualquier tipo de app; `StdlogReactorContextPropagationAutoConfiguration` registra un `ThreadLocalAccessor` de `request_id` para R2DBC — activo si el consumidor habilita `Hooks.enableAutomaticContextPropagation()`). Fase 3 pendiente.
+> **Estado de fases: todas hechas.** Fase 1 (`StdlogWebFilter`), Fase 2 (WebClient lee el Reactor Context + `operation` desde el `ServerWebExchange`; autoconfig abierta; `ThreadLocalAccessor` de `request_id` para R2DBC), Fase 3 (`@StdlogExcluded` reactivo, `StdlogWebExceptionHandler` para la excepción real, `StdlogCustomReactive`).
 
 ## Contexto
 
@@ -95,11 +95,12 @@ Cada fase es una PR independiente a `main`, portada a `spring-boot-3.x`. La suit
 - `StdlogReactorContext` movido a `appbrain.stdlog.core` (compartido por el `WebFilter` que escribe y los clientes que leen).
 - **R2DBC** en apps WebFlux: `r2dbc-proxy` 1.1.x **no expone el `ContextView`** a sus listeners (sólo `ValueStore`). `StdlogR2dbcQueryListener` sigue leyendo del MDC en `beforeQuery` (sin cambios). `StdlogReactorContextPropagationAutoConfiguration` (`@ConditionalOnClass(io.micrometer.context.ContextRegistry)` + `REACTIVE`) registra un `ThreadLocalAccessor` para `request_id`: cuando el consumidor habilita `Hooks.enableAutomaticContextPropagation()`, ese valor viaja Context↔MDC en los hilos del event-loop y llega al evento `CLIENT_DB`. El starter **no** activa el hook (es global de la app). Dependencia `io.micrometer:context-propagation` `provided`.
 
-**Fase 3 — Refinamientos**:
+**Fase 3 — Refinamientos** (hecha):
 
-- `@StdlogExcluded` en handler methods reactivos.
-- `StdlogCustom` para código reactivo (variante que lee el Context, o helper `StdlogCustom.with(contextView)`), ya que la fachada estática lee MDC.
-- Evento de error de mayor fidelidad: registrar un `WebExceptionHandler` de alta precedencia para capturar la excepción real antes de que `ExceptionHandlingWebHandler` la convierta en respuesta (si se decide que vale la invasividad).
+- `@StdlogExcluded` en handler methods reactivos: `StdlogWebFilter` resuelve la anotación desde el `HandlerMethod` tras la cadena (`AnnotatedElementUtils`, igual que la vía servlet) y suprime los `CONTROLLER_HTTP`/error INFO de ese handler. **Sólo afecta a `CONTROLLER_HTTP`/error**: los `CLIENT_*` aguas abajo ya se emitieron cuando se resuelve el handler. La exclusión por *path* sí se propaga (viaja en el Context desde antes de la cadena).
+- **`StdlogWebExceptionHandler`** (`@Order(HIGHEST_PRECEDENCE)`, `WebExceptionHandler`): guarda la excepción en un atributo del exchange y la re-propaga (`Mono.error`), sin consumirla — análogo a `StdlogExceptionResolver` de la vía servlet. `StdlogWebFilter` la lee en su `doFinally`, así el evento de error lleva `type`/`message`/`app_trace` y stack trace reales aunque `ExceptionHandlingWebHandler` haya convertido la excepción en respuesta.
+- **`StdlogCustomReactive`** (`appbrain.stdlog.webflux`): variante reactiva de `StdlogCustom` (que **no se modifica**). Cada método devuelve un `Mono<Void>` que en `Mono.deferContextual` lee la correlación del Context, la completa en el MDC (sin pisar lo existente) y delega en `StdlogCustom`. Se compone con la cadena del consumidor (`.flatMap(x -> StdlogCustomReactive.success(...).thenReturn(x))`).
+- Helper compartido nuevo `appbrain.stdlog.core.StdlogReactiveCorrelation` (resuelve `request_id`/`operation`/exclusión del Context); lo usan el filtro de `WebClient` y `StdlogCustomReactive`.
 
 ## Consecuencias
 
@@ -141,7 +142,11 @@ Antes de cerrar cada fase:
 
 **Fase 1**: `StdlogWebFilterTest` (7 tests, `WebTestClient.bindToController` + `.webFilter(...)`): `webflux.enabled=false`, `CONTROLLER_HTTP IN/OUT` de un GET (method/fullPath/operation/route/request_id/queryParams), reutilización del header `x-request-id`, captura de body request+response, evento `ERROR` en un controller que tira (excepción + throwable), evento `WARN` en 404, supresión de INFO en path excluido. `StdlogWebFluxAutoConfigurationTest` (4 tests). Código servlet sin cambios.
 
-**Fase 2**: `StdlogWebClientExchangeFilterTest` — `request_id`/`operation` del Reactor Context cuando el MDC está vacío; MDC gana sobre el Context; `operation` resuelto desde el `ServerWebExchange` del Context. `StdlogWebClientAutoConfigurationTest` — activa también fuera de apps servlet. `StdlogReactorContextPropagationAutoConfigurationTest` (3 tests) — el `ThreadLocalAccessor` de `request_id` se registra en apps reactivas y escribe/lee el MDC. Suite completa: **222 tests, 0 fallos** en JDK 17 y JDK 25.
+**Fase 2**: `StdlogWebClientExchangeFilterTest` — `request_id`/`operation` del Reactor Context cuando el MDC está vacío; MDC gana sobre el Context; `operation` resuelto desde el `ServerWebExchange` del Context. `StdlogWebClientAutoConfigurationTest` — activa también fuera de apps servlet. `StdlogReactorContextPropagationAutoConfigurationTest` (3 tests) — el `ThreadLocalAccessor` de `request_id` se registra en apps reactivas y escribe/lee el MDC.
+
+**Fase 3**: `StdlogWebFilterTest` +1 (`shouldSuppressInfoEventsForStdlogExcludedHandler` — un handler `@StdlogExcluded` no emite `CONTROLLER_HTTP` a nivel INFO). `StdlogWebExceptionHandlerTest` (2 tests — guarda la excepción en el atributo del exchange y la re-propaga; no pisa una excepción ya guardada). `StdlogCustomReactiveTest` (3 tests — evento custom con correlación tomada del Reactor Context; `failure` con throwable; emite también sin ningún Context, sin dejar el MDC sucio).
+
+Suite completa: **228 tests, 0 fallos** en JDK 17 y JDK 25. Código servlet, `StdlogCustom`, `StdlogEmitter`, listener R2DBC y `StdlogClientHttpInterceptor` sin cambios.
 
 ## Relación con Otros ADR
 

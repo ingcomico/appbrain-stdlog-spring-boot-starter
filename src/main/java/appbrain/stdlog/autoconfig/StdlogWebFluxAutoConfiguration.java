@@ -1,6 +1,7 @@
 package appbrain.stdlog.autoconfig;
 
 import appbrain.stdlog.config.StdlogProperties;
+import appbrain.stdlog.webflux.StdlogWebExceptionHandler;
 import appbrain.stdlog.webflux.StdlogWebFilter;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -18,8 +19,9 @@ import org.springframework.web.server.WebFilter;
  * ({@code StdlogAutoConfiguration}, {@code StdlogWebMvcAutoConfiguration}, {@code StdlogErrorAutoConfiguration}),
  * que son {@code SERVLET}-only. La vía servlet no se toca.</p>
  *
- * <p>Registra {@link StdlogWebFilter}, que emite {@code CONTROLLER_HTTP} y el evento extra de
- * error, y escribe la correlación del request en el Reactor Context.</p>
+ * <p>Registra {@link StdlogWebFilter} (emite {@code CONTROLLER_HTTP} y el evento de error,
+ * escribe la correlación en el Reactor Context) y {@link StdlogWebExceptionHandler} (captura
+ * la excepción real sin consumirla, para el evento de error). Ver ADR-0008.</p>
  */
 @AutoConfiguration
 @EnableConfigurationProperties(StdlogProperties.class)
@@ -32,5 +34,11 @@ public class StdlogWebFluxAutoConfiguration {
     @ConditionalOnProperty(prefix = "stdlog.controller.webflux", name = "enabled", havingValue = "true", matchIfMissing = true)
     public StdlogWebFilter stdlogWebFilter(StdlogProperties props) {
         return new StdlogWebFilter(props);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "stdlog.controller.webflux", name = "enabled", havingValue = "true", matchIfMissing = true)
+    public StdlogWebExceptionHandler stdlogWebExceptionHandler() {
+        return new StdlogWebExceptionHandler();
     }
 }
