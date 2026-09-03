@@ -263,6 +263,9 @@ Incluye:
 }
 ```
 
+> **WebFlux:** en apps reactivas la instrumentación de entrada la hace un `WebFilter`
+> equivalente (ver 5.6). Misma config, mismos eventos.
+
 ### 5.4 Variables `stdlog.controller.*`
 
 | Variable | Descripción |
@@ -279,6 +282,7 @@ Incluye:
 | `excluded-path-patterns` | Lista de patrones Ant para silenciar eventos INFO/DEBUG/TRACE de ese request (WARN/ERROR igual se loguean — ver [5.5](#55-exclusión-de-logging-regla-general)). Se comparan contra el path sin `contextPath`; admite valores exactos como `/health` y prefijos como `/actuator/**`. Default: vacío |
 | `allowed-headers` | Allowlist de headers del request |
 | `allowed-content-types` | Allowlist de content-types para capturar body (recomendado JSON y texto). Una lista vacía deshabilita toda captura de body, aunque `log-request-body` o `log-response-body` sea `true`. Default: `[application/json, text/plain, application/*+json]` |
+| `webflux.enabled` | Si `false`, no se instrumenta la entrada HTTP reactiva (apps servlet no se ven afectadas). Default `true`. Ver [5.6](#56-aplicaciones-webflux-entrada-reactiva) |
 
 ### 5.5 Exclusión de logging: regla general
 
@@ -368,6 +372,30 @@ nivel de método (excluye solo ese endpoint). Se resuelve en
 `StdlogMvcOperationInterceptor` (que ya conoce el `HandlerMethod` real), no en el
 filtro, y soporta anotaciones compuestas/meta-anotadas (por ejemplo, tu propio
 `@InternalEndpoint` meta-anotado con `@StdlogExcluded`).
+
+### 5.6 Aplicaciones WebFlux (entrada reactiva)
+
+En una aplicación **WebFlux** (Netty, controllers reactivos), el starter registra
+un `WebFilter` (`StdlogWebFilter`, `@ConditionalOnWebApplication(REACTIVE)`) que
+emite el **mismo `CONTROLLER_HTTP IN/OUT`** y el **mismo evento extra de error**
+(`WARN` 4xx / `ERROR` 5xx), resuelve `operation`/`route` y aplica
+`excluded-path-patterns`. Reutiliza toda la config `stdlog.controller.*` y
+`stdlog.error.*`.
+
+- No requiere ningún paso manual: el `WebFilter` se autoconfigura.
+- Escribe `request_id` (header `x-request-id`, lo devuelve) en el **Reactor Context**.
+- Captura de body con decoradores reactivos, acotada por
+  `maxRequestBodyBytes`/`maxResponseBodyBytes`.
+- Para apagar sólo esta vía: `stdlog.controller.webflux.enabled: false`.
+- **Correlación de `CLIENT_DB`/`CLIENT_HTTP` con el request** en una app WebFlux:
+  hoy requiere que el consumidor active Micrometer context-propagation
+  (`Hooks.enableAutomaticContextPropagation()`). El starter no lo activa (es un
+  switch global de la aplicación). Sin eso, esos eventos se emiten sin
+  `request_id`/`operation` (siguientes fases de ADR-0008 lo mejoran).
+- **Evento de error**: si un `WebExceptionHandler` de WebFlux convirtió la excepción
+  en respuesta antes de llegar al filtro, el evento sale con el status y un mensaje
+  sintético (la excepción real es best-effort). Aplicaciones servlet no se ven
+  afectadas: los dos stacks son mutuamente excluyentes.
 
 ---
 

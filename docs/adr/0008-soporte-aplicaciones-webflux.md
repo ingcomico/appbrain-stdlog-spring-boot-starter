@@ -7,6 +7,8 @@ Aceptado
 > El **alcance** (soportar apps WebFlux) queda decidido con este ADR. La implementación se
 > hace **por fases** (ver "Plan de fases"); cada fase es una PR revisable y puede refinar
 > detalles de diseño.
+>
+> **Estado de fases:** Fase 1 **hecha** (`StdlogWebFilter`, `appbrain.stdlog.webflux`). Fases 2 y 3 pendientes.
 
 ## Contexto
 
@@ -73,14 +75,17 @@ Se adopta la **Alternativa 2**: **el starter soporta aplicaciones WebFlux como s
 
 Cada fase es una PR independiente a `main`, portada a `spring-boot-3.x`. La suite servlet (205 tests) se mantiene verde en cada PR como prueba de no-regresión; se añade una suite reactiva con `WebTestClient`.
 
-**Fase 1 — `StdlogWebFilter`** (`@ConditionalOnWebApplication(REACTIVE)`):
+**Fase 1 — `StdlogWebFilter`** (`@ConditionalOnWebApplication(REACTIVE)`) — **HECHA**:
 
 - Genera/lee `request_id` del header `x-request-id` (lo devuelve en la respuesta), igual que `RequestIdMdcFilter`.
-- Resuelve `operation` (`Controller#method`) y `route` (patrón) tras completar la cadena, desde `HandlerMapping.BEST_MATCHING_HANDLER`/`PATTERN` attributes del `ServerWebExchange`.
-- Marca la exclusión (`excluded-path-patterns`) en el Context.
-- Emite `CONTROLLER_HTTP IN` y `OUT` con el mismo shape que la vía servlet (headers allowlist, body con `ContentCaching` reactivo — patrón del filtro WebClient — condicionado por content-type y `maxRequestBodyBytes`/`maxResponseBodyBytes`).
-- Emite el **evento extra de error** basándose en el status final de `exchange.getResponse()` (4xx → WARN, 5xx → ERROR); la excepción se captura best-effort vía `doOnError` y/o un atributo del exchange.
-- Escribe `request_id`/`operation`/`route`/exclusión en el Reactor Context.
+- Resuelve `operation` (`Controller#method`) y `route` (`METHOD patrón`) tras completar la cadena, desde `HandlerMapping.BEST_MATCHING_HANDLER_ATTRIBUTE`/`BEST_MATCHING_PATTERN_ATTRIBUTE` del `ServerWebExchange`.
+- Aplica `excluded-path-patterns` (`AntPathMatcher`); en un path excluido, envuelve la emisión con `MDC_EXCLUDED` para que `StdlogEmitter` suprima TRACE/DEBUG/INFO (`WARN`/`ERROR` siempre salen), igual que la vía servlet.
+- Emite `CONTROLLER_HTTP IN` y `OUT` (ambos tras completar la cadena, como el filtro servlet) con headers allowlist, `queryParams`, y body capturado con `ServerHttpRequestDecorator`/`ServerHttpResponseDecorator` tee-ados, acotado por `maxRequestBodyBytes`/`maxResponseBodyBytes` y filtrado por `allowedContentTypes`.
+- Emite el **evento extra de error** por el status final de `exchange.getResponse()` (4xx → WARN, 5xx → ERROR). La excepción se captura vía `doOnError`; si un `WebExceptionHandler` la convirtió antes, el evento sale con status + mensaje sintético (mejora en Fase 3).
+- Escribe `request_id` y exclusión en el Reactor Context (`operation`/`route` aún no, porque se resuelven al final; la Fase 2 los propaga si hace falta).
+- Emisión en hilo del event-loop: restaura el MDC con los valores capturados alrededor de cada `StdlogEmitter.emit(...)` (patrón del filtro WebClient). `StdlogEmitter` / `StdlogTraceCorrelation` sin cambios.
+- Config: reutiliza `stdlog.controller.*` / `stdlog.error.*` + `stdlog.controller.webflux.enabled` (default `true`).
+- `StdlogWebFluxAutoConfiguration` registrada en `AutoConfiguration.imports`; el paquete servlet no se toca.
 
 **Fase 2 — Correlación downstream**:
 
@@ -127,10 +132,12 @@ Cada fase es una PR independiente a `main`, portada a `spring-boot-3.x`. La suit
 
 Antes de cerrar cada fase:
 
-- Suite servlet (205 tests) **verde** — prueba de no-regresión de la vía servlet.
+- Suite servlet **verde** — prueba de no-regresión de la vía servlet (el código servlet no se modifica).
 - Nueva suite reactiva con `WebTestClient` para la fase correspondiente.
 - Portado a `spring-boot-3.x`, verde en JDK 17 y JDK 25.
 - `AI_CONTEXT.md` / `README.md` actualizados en la misma PR (`ADR-0004`).
+
+**Fase 1**: `StdlogWebFilterTest` (7 tests, `WebTestClient.bindToController` + `.webFilter(...)`): `webflux.enabled=false`, `CONTROLLER_HTTP IN/OUT` de un GET (method/fullPath/operation/route/request_id/queryParams), reutilización del header `x-request-id`, captura de body request+response, evento `ERROR` en un controller que tira (excepción + throwable), evento `WARN` en 404, supresión de INFO en path excluido. `StdlogWebFluxAutoConfigurationTest` (4 tests). Suite completa: 216 tests, 0 fallos en JDK 17 y JDK 25. Código servlet sin cambios (verificable en el diff).
 
 ## Relación con Otros ADR
 
