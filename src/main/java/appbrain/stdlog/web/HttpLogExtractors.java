@@ -1,8 +1,12 @@
 package appbrain.stdlog.web;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import org.springframework.http.MediaType;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.util.UriComponentsBuilder;
 
 /**
  * Utilidades de extracción de datos HTTP para los logs de controller.
@@ -41,7 +45,8 @@ public final class HttpLogExtractors {
     }
 
     /**
-     * Extrae los query parameters del request.
+     * Extrae únicamente los parámetros de la query string del request, sin mezclar
+     * campos de un body {@code application/x-www-form-urlencoded}.
      * Parámetros con un único valor se representan como {@code String};
      * parámetros multi-valor como {@code String[]}.
      *
@@ -49,10 +54,31 @@ public final class HttpLogExtractors {
      * @return mapa con todos los query parameters; nunca {@code null}
      */
     public static Map<String, Object> queryParams(HttpServletRequest req) {
-        Map<String, String[]> map = req.getParameterMap();
+        String queryString = req.getQueryString();
+        if (queryString == null || queryString.isBlank()) return Map.of();
+
+        MultiValueMap<String, String> params = UriComponentsBuilder.fromPath("")
+                .query(queryString)
+                .build()
+                .getQueryParams();
         Map<String, Object> out = new LinkedHashMap<>();
-        map.forEach((k, v) -> out.put(k, (v == null || v.length != 1) ? v : v[0]));
+        params.forEach((key, values) -> {
+            String decodedKey = decodeQueryComponent(key);
+            String[] decodedValues = values == null
+                    ? new String[0]
+                    : values.stream().map(HttpLogExtractors::decodeQueryComponent).toArray(String[]::new);
+            out.put(decodedKey, decodedValues.length == 1 ? decodedValues[0] : decodedValues);
+        });
         return out;
+    }
+
+    private static String decodeQueryComponent(String value) {
+        if (value == null) return null;
+        try {
+            return URLDecoder.decode(value, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ignored) {
+            return value;
+        }
     }
 
     /**

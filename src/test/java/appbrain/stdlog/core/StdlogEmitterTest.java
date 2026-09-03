@@ -13,7 +13,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
+import java.util.AbstractMap;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -47,6 +49,27 @@ class StdlogEmitterTest {
 
         StdlogEmitter.emit(STDLOG, StdlogLevel.INFO, Map.of("event", "SHOULD_NOT_APPEAR"));
 
+        assertTrue(appender.list.isEmpty());
+    }
+
+    @Test
+    void shouldNotInspectPayloadWhenLoggerLevelIsAboveEventLevel() {
+        appender = StdlogTestSupport.attachStdlogAppender(Level.ERROR);
+        Map<String, Object> unreadablePayload = new AbstractMap<>() {
+            @Override
+            public Object get(Object key) {
+                throw new AssertionError("disabled events must not be enriched");
+            }
+
+            @Override
+            public Set<Entry<String, Object>> entrySet() {
+                throw new AssertionError("disabled events must not be serialized");
+            }
+        };
+
+        assertDoesNotThrow(() -> StdlogEmitter.emit(STDLOG, StdlogLevel.DEBUG, unreadablePayload));
+        assertDoesNotThrow(() -> StdlogEmitter.emit(
+                STDLOG, StdlogLevel.DEBUG, unreadablePayload, new RuntimeException("ignored")));
         assertTrue(appender.list.isEmpty());
     }
 

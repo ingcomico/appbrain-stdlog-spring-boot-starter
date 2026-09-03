@@ -12,7 +12,7 @@ Aceptado
 
 ## Contexto
 
-- El starter instrumenta la **entrada HTTP** sólo para aplicaciones servlet/MVC: `RequestIdMdcFilter`, `ControllerBodyAndOutLoggingFilter`, `StdlogMvcOperationInterceptor` y `StdlogExceptionResolver` son servlet/Spring MVC, gated por `@ConditionalOnWebApplication(SERVLET)` (o por dependencias de `spring-webmvc`).
+- El starter instrumenta la **entrada HTTP** para aplicaciones servlet/MVC mediante `RequestIdMdcFilter`, `ControllerBodyAndOutLoggingFilter`, `StdlogMvcOperationInterceptor` y `StdlogExceptionResolver`. Sus autoconfiguraciones están gated por `@ConditionalOnWebApplication(SERVLET)` y, cuando exponen tipos MVC, por `@ConditionalOnClass`.
 - `ADR-0006` (WebClient) y `ADR-0007` (R2DBC) cubrieron **clientes salientes reactivos**, pero explícitamente **no** el stack de entrada. Su correlación (`request_id`, `operation`) en una app WebFlux pura depende hoy de que el consumidor active Micrometer context-propagation, porque **nada en el starter puebla esos valores** en una app reactiva.
 - En una aplicación **WebFlux pura** hoy, con el starter (+ ADR-0006/0007):
   - **no se emite `CONTROLLER_HTTP`** (entrada/salida de los propios endpoints);
@@ -63,6 +63,7 @@ Se adopta la **Alternativa 2**: **el starter soporta aplicaciones WebFlux como s
 
 - **Nuevo paquete `appbrain.stdlog.webflux`** con toda la lógica reactiva de entrada. **`appbrain.stdlog.web` (servlet) NO se modifica.**
 - **`StdlogWebFluxAutoConfiguration`** — `@ConditionalOnWebApplication(type = REACTIVE)` + `@ConditionalOnClass(org.springframework.web.server.WebFilter)`. No puede co-activar con las auto-configs servlet.
+- **Autoconfiguraciones servlet** — toda autoconfiguración que expone tipos MVC lleva `@ConditionalOnWebApplication(type = SERVLET)` + `@ConditionalOnClass` para que una aplicación WebFlux pura pueda arrancar sin `spring-webmvc` ni Servlet API en el classpath.
 - **Columna de correlación en reactivo = Reactor Context.** El `WebFilter` escribe `request_id`, `operation`, `route` y el marcador de exclusión en el `Context` de Reactor (`contextWrite`). Los puntos de emisión reactivos (`StdlogWebClientExchangeFilter`, `StdlogR2dbcQueryListener`) leen el `ContextView` como fuente primaria en reactivo (hoy: MDC-first; cambio **aditivo**).
 - **Restauración de ThreadLocals/MDC entre hilos reactivos** = Micrometer context-propagation. El starter registra los `ThreadLocalAccessor` necesarios (o usa las keys MDC estándar que `Slf4jThreadLocalAccessor` ya maneja) cuando `io.micrometer:context-propagation` está en classpath. **El starter NO llama `Hooks.enableAutomaticContextPropagation()`** — eso es un switch global que decide la aplicación; se documenta como requisito para correlación completa en pipelines 100% reactivos.
 - **`StdlogEmitter` y `StdlogTraceCorrelation` no se modifican**, o sólo de forma aditiva (`StdlogTraceCorrelation.enrich(Map, ContextView)` como overload; el existente intacto).
@@ -146,7 +147,9 @@ Antes de cerrar cada fase:
 
 **Fase 3**: `StdlogWebFilterTest` +1 (`shouldSuppressInfoEventsForStdlogExcludedHandler` — un handler `@StdlogExcluded` no emite `CONTROLLER_HTTP` a nivel INFO). `StdlogWebExceptionHandlerTest` (2 tests — guarda la excepción en el atributo del exchange y la re-propaga; no pisa una excepción ya guardada). `StdlogCustomReactiveTest` (3 tests — evento custom con correlación tomada del Reactor Context; `failure` con throwable; emite también sin ningún Context, sin dejar el MDC sucio).
 
-Suite completa: **228 tests, 0 fallos** en JDK 17 y JDK 25. Código servlet, `StdlogCustom`, `StdlogEmitter`, listener R2DBC y `StdlogClientHttpInterceptor` sin cambios.
+Al cierre de la Fase 3: **228 tests, 0 fallos** en JDK 17 y JDK 25. En ese cierre, el código servlet, `StdlogCustom`, `StdlogEmitter`, listener R2DBC y `StdlogClientHttpInterceptor` permanecían sin cambios.
+
+Validación posterior de las guardas servlet requeridas por este ADR: **235 tests, 0 fallos** en JDK 17 y JDK 25, incluyendo un contexto WebFlux con `spring-webmvc` y Servlet API filtrados. El artefacto conserva `release 17`.
 
 ## Relación con Otros ADR
 

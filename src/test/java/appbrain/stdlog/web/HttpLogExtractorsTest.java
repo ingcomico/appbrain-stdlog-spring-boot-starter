@@ -41,7 +41,7 @@ class HttpLogExtractorsTest {
     @Test
     void queryParamsShouldReturnSingleValueAsString() {
         MockHttpServletRequest req = new MockHttpServletRequest();
-        req.addParameter("site_id", "MCO");
+        req.setQueryString("site_id=MCO");
 
         Map<String, Object> params = HttpLogExtractors.queryParams(req);
 
@@ -51,7 +51,7 @@ class HttpLogExtractorsTest {
     @Test
     void queryParamsShouldReturnMultiValueAsArray() {
         MockHttpServletRequest req = new MockHttpServletRequest();
-        req.addParameter("id", "10", "20");
+        req.setQueryString("id=10&id=20");
 
         Map<String, Object> params = HttpLogExtractors.queryParams(req);
 
@@ -59,10 +59,35 @@ class HttpLogExtractorsTest {
     }
 
     @Test
+    void queryParamsShouldDecodeFormStyleQueryComponents() {
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setQueryString("search=hello+world&path=orders%2F42");
+
+        Map<String, Object> params = HttpLogExtractors.queryParams(req);
+
+        assertEquals("hello world", params.get("search"));
+        assertEquals("orders/42", params.get("path"));
+    }
+
+    @Test
     void queryParamsShouldReturnEmptyMapWhenNoParams() {
         MockHttpServletRequest req = new MockHttpServletRequest();
 
         assertTrue(HttpLogExtractors.queryParams(req).isEmpty());
+    }
+
+    @Test
+    void queryParamsShouldNotIncludeUrlEncodedFormFields() {
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/login");
+        req.setContentType("application/x-www-form-urlencoded");
+        req.setQueryString("source=web");
+        req.addParameter("source", "web");
+        req.addParameter("username", "ana");
+        req.addParameter("password", "s3cr3t-real");
+
+        Map<String, Object> params = HttpLogExtractors.queryParams(req);
+
+        assertEquals(Map.of("source", "web"), params);
     }
 
     @Test
