@@ -23,6 +23,7 @@ Antes de realizar cambios arquitectonicos, estructurales o que afecten contratos
    - `0003` — salida JSON via Logback + logstash-logback-encoder.
    - `0004` — la documentacion afectada se actualiza en el mismo commit/PR que el cambio.
    - `0005` — dos lineas de mantenimiento (`main` = Boot 4, `spring-boot-3.x` = Boot 3) con paridad funcional.
+   - `0006` — logging del evento `CLIENT_HTTP` para `WebClient` (cliente saliente reactivo, solo en apps servlet).
 4. Determinar el impacto antes de modificar codigo.
 5. No duplicar decisiones arquitectonicas en archivos especificos de cada agente.
 6. Si existe una contradiccion entre este archivo, el codigo actual y otros documentos, reportarla antes de asumir cual es correcta.
@@ -65,6 +66,7 @@ Ambas ofrecen las mismas capacidades, la misma configuracion `stdlog.*`, el mism
   - `spring-boot-autoconfigure`;
   - `spring-boot-restclient`;
   - `spring-webmvc` con scope `provided`;
+  - `spring-webflux` y `io.projectreactor:reactor-core` con scope `provided` (solo para el logging de `WebClient`, ver `ADR-0006`);
   - `jakarta.servlet-api` con scope `provided`;
   - `tools.jackson.core:jackson-databind` (Jackson 3);
   - `net.ttddyy:datasource-proxy:1.9`;
@@ -105,8 +107,10 @@ El codigo principal esta bajo `src/main/java/appbrain/stdlog`.
   - `StdlogExceptionResolver`;
   - `HttpLogExtractors`;
   - `StdlogAttrs`.
-- `appbrain.stdlog.restclient`: interceptacion de clientes HTTP salientes:
-  - `StdlogClientHttpInterceptor`;
+- `appbrain.stdlog.restclient`: instrumentacion de clientes HTTP salientes:
+  - `StdlogClientHttpInterceptor` (`RestTemplate` / `RestClient`);
+  - `StdlogWebClientExchangeFilter` (`WebClient`, ver `ADR-0006`);
+  - `StdlogClientHttpPayload` (armado del evento `CLIENT_HTTP`, compartido por el filtro WebClient);
   - `StdlogHttpBodyDecoder`.
 - `appbrain.stdlog.jdbc`: listener `datasource-proxy`:
   - `StdlogClientDbQueryListener`.
@@ -117,7 +121,7 @@ El codigo principal esta bajo `src/main/java/appbrain/stdlog`.
 
 ### Recursos Publicos
 
-- `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` registra las cinco autoconfiguraciones (`StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration`, `StdlogRestClientAutoConfiguration`, `StdlogJdbcAutoConfiguration`, `StdlogErrorAutoConfiguration`).
+- `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` registra seis autoconfiguraciones (`StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration`, `StdlogRestClientAutoConfiguration`, `StdlogWebClientAutoConfiguration`, `StdlogJdbcAutoConfiguration`, `StdlogErrorAutoConfiguration`).
 - `META-INF/spring.factories` registra `StdlogVersionEnvironmentPostProcessor` como `EnvironmentPostProcessor`.
 - Existe ademas el archivo `META-INF/spring/org.springframework.boot.EnvironmentPostProcessor` (sin sufijo `.imports`), pero Spring Boot 4 no lo lee por ningun mecanismo: es un archivo inerte heredado y debe eliminarse (ver ADR-0001, Riesgos).
 - `stdlog/logback-spring-stdlog.xml` define un appender JSON de consola, logger `stdlog`, root logger y campo `stdlog_lib_version`.
@@ -171,6 +175,8 @@ Registra:
 Para `RestTemplate`, el customizer agrega el interceptor si no existe y reemplaza el request factory por `BufferingClientHttpRequestFactory`.
 
 `StdlogClientHttpInterceptor` emite un unico evento `CLIENT_HTTP direction=IN` por llamada saliente despues de recibir la respuesta o capturar la excepcion. Aunque representa una llamada HTTP saliente, la direccion vigente es `IN` porque el evento se registra al entrar la respuesta al cliente instrumentado. En modo productivo puede omitir exitos segun `stdlog.restclient.log-only-on-failure-in-prod`.
+
+Para `WebClient` (cliente reactivo), `StdlogWebClientAutoConfiguration` (solo en apps servlet con `WebClient` en classpath) registra `StdlogWebClientExchangeFilter` y lo añade a los `WebClient.Builder` del contexto via `BeanPostProcessor`. El filtro emite el mismo evento `CLIENT_HTTP` con el mismo formato (helper `StdlogClientHttpPayload`), captura el MDC de forma sincrona y lo restaura alrededor de la emision para no perder `request_id`/`operation`/`trace_id`/`span_id`, y bufferiza los bodies hasta `stdlog.restclient.webclient.max-capture-bytes` sin alterar el stream que recibe la app. Se apaga con `stdlog.restclient.webclient.enabled=false`. Ver `ADR-0006`. `StdlogClientHttpInterceptor` no se modifico.
 
 ### JDBC
 
@@ -239,6 +245,7 @@ Los payloads custom pasan por `StdlogEmitter`, quedan bajo la clave `stdlog` y s
 - `stdlog.mode=AUTO` cae a no productivo cuando `STDLOG_MODE` no esta definido.
 - `RestTemplate` se envuelve con `BufferingClientHttpRequestFactory` para poder leer bodies.
 - `RestClient` recibe el mismo `StdlogClientHttpInterceptor` mediante customizer.
+- `WebClient` recibe `StdlogWebClientExchangeFilter` (código nuevo, no toca el interceptor síncrono); comparte el formato del evento vía `StdlogClientHttpPayload`.
 - JDBC se instrumenta reemplazando el `DataSource` del consumidor por un proxy `@Primary`.
 - `TRACE`, `DEBUG` e `INFO` pueden suprimirse por path/anotacion, pero `WARN` y `ERROR` no.
 - La version de libreria se expone via environment post processor y se agrega al JSON como `stdlog_lib_version`.
@@ -264,7 +271,7 @@ Suite ejecutada en `main` (`mvn test`): 177 tests, 0 fallos, `BUILD SUCCESS`, ve
 ## Limitaciones Actuales
 
 - El starter esta acotado a stack servlet/MVC; no hay evidencia de soporte WebFlux.
-- El soporte de HTTP saliente se limita a `RestTemplate` y `RestClient`; no hay evidencia de WebClient.
+- El soporte de HTTP saliente cubre `RestTemplate`, `RestClient` y `WebClient` (este ultimo solo como cliente saliente en apps servlet, ver `ADR-0006`); no hay soporte para aplicaciones WebFlux completas.
 - `RestTemplate` queda con request factory buffering, con posible impacto de memoria en bodies grandes.
 - El proxy JDBC como `@Primary DataSource` puede interactuar con configuraciones avanzadas del consumidor, multiples datasources o wrapping previo.
 - Las politicas de exclusion basadas en MDC se propagan solo dentro del mismo thread.
@@ -278,7 +285,7 @@ Suite ejecutada en `main` (`mvn test`): 177 tests, 0 fallos, `BUILD SUCCESS`, ve
 - Definir si se publica a un repositorio remoto (Maven Central / JitPack) ademas del flujo local `release/`. El esquema de version por linea (`4.x.y` / `3.x.y`) ya esta decidido en `ADR-0005`.
 - Definir si el reemplazo `@Primary DataSource` es el contrato definitivo para JDBC o si debe existir una alternativa menos invasiva.
 - Definir politica formal de soporte para multiples datasources.
-- Definir si se soportara WebFlux/WebClient o si el alcance queda explicitamente limitado a servlet/MVC, `RestTemplate` y `RestClient`.
+- Definir si el alcance del starter se amplia a aplicaciones WebFlux completas (hoy `ADR-0006` limita el soporte reactivo a `WebClient` como cliente saliente dentro de apps servlet).
 - Definir criterios de seguridad por defecto para headers, bodies y parametros sensibles.
 - Definir si el ciclo `StdlogCustom`/`StdlogEmitter` debe aceptarse como patron de fachada estatica o refactorizarse.
 
@@ -400,13 +407,14 @@ Si existe contradiccion entre estas fuentes, reportarla antes de modificar el si
 - Estrategia de logging JSON basada en Logback/logstash encoder y archivo `logback-spring-stdlog.xml` provisto por el starter -> **ADR-0003**.
 - La documentacion afectada se actualiza en el mismo commit/PR que el cambio -> **ADR-0004**.
 - Dos lineas de mantenimiento (`main` Boot 4, `spring-boot-3.x` Boot 3) con paridad funcional -> **ADR-0005**.
+- Logging del evento `CLIENT_HTTP` para `WebClient` (cliente saliente reactivo) -> **ADR-0006**.
 
 ### Pendientes
 
-- Alcance oficial del starter: servlet/MVC solamente vs soporte futuro WebFlux/WebClient.
+- Alcance oficial del starter para aplicaciones WebFlux completas (el cliente `WebClient` ya esta cubierto por `ADR-0006`).
 - Estrategia JDBC: reemplazo `@Primary DataSource` con `datasource-proxy` y politica para multiples datasources.
 - Politica de modo `AUTO` y default a `NON_PROD` cuando `STDLOG_MODE` no esta definido.
 - Politica de exclusion: suprimir solo `TRACE/DEBUG/INFO` y nunca `WARN/ERROR`.
-- Contrato de instrumentacion HTTP saliente para `RestTemplate`/`RestClient`, incluyendo buffering en `RestTemplate`.
+- Contrato de instrumentacion HTTP saliente para `RestTemplate`/`RestClient`, incluyendo buffering en `RestTemplate` (la vía `WebClient` está en `ADR-0006`).
 - Politica de seguridad para bodies, headers y parametros SQL.
 - Publicacion a un repositorio remoto (Maven Central / JitPack) ademas del flujo local `release/`.
