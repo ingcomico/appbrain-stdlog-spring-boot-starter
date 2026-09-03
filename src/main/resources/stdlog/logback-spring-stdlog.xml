@@ -17,19 +17,10 @@
                 </pattern-->
                 <!--loggerName/-->
                 <!-- <mdc> ... </mdc> -->
-                <globalCustomFields>
-                    <customFields>{"stdlog_lib_version":"${STDLOG_LIB_VERSION}"}</customFields>
-                </globalCustomFields>
-                <!--throwableClassName>
-                    <nestedField>error</nestedField>
-                    <fieldName>type</fieldName>
-                </throwableClassName>
-                <throwableMessage>
-                    <nestedField>error</nestedField>
-                    <fieldName>message</fieldName>
-                </throwableMessage-->
+                <pattern>
+                    <pattern>{"stdlog_lib_version":"${STDLOG_LIB_VERSION}"}</pattern>
+                </pattern>
                 <stackTrace>
-                    <nestedField>stdlog.error</nestedField>
                     <fieldName>stack_trace</fieldName>
                     <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
                         <maxDepthPerThrowable>200</maxDepthPerThrowable>

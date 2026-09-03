@@ -242,6 +242,22 @@ class StdlogClientHttpInterceptorTest {
     }
 
     @Test
+    void shouldIncludeTraceAndSpanIdsFromMdc() throws IOException {
+        appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
+        MDC.put("traceId", "trace-client-http");
+        MDC.put("spanId", "span-client-http");
+        StdlogProperties props = props();
+
+        StdlogClientHttpInterceptor interceptor = new StdlogClientHttpInterceptor(props);
+        interceptor.intercept(get("https://api.example.com/ok"), new byte[0],
+                (req, body) -> new MockClientHttpResponse(new byte[0], 200));
+
+        Map<String, Object> payload = onlyPayload();
+        assertEquals("trace-client-http", payload.get("trace_id"));
+        assertEquals("span-client-http", payload.get("span_id"));
+    }
+
+    @Test
     void shouldOnlyIncludeAllowlistedRequestHeaders() throws IOException {
         appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
         StdlogProperties props = props();

@@ -98,6 +98,18 @@ class StdlogCustomTest {
     }
 
     @Test
+    void shouldIncludeTraceAndSpanIdsFromMdc() {
+        MDC.put("traceId", "trace-custom");
+        MDC.put("spanId", "span-custom");
+
+        StdlogCustom.info("TAG_CREATED", Map.of("id", 10));
+
+        Map<String, Object> payload = onlyPayload();
+        assertEquals("trace-custom", payload.get("trace_id"));
+        assertEquals("span-custom", payload.get("span_id"));
+    }
+
+    @Test
     void shouldOmitOperationAndRequestIdWhenMdcIsEmpty() {
         StdlogCustom.info("TAG_CREATED", Map.of("id", 10));
 

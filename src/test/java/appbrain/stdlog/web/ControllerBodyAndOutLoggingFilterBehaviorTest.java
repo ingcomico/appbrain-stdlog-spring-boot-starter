@@ -4,7 +4,6 @@ import appbrain.stdlog.StdlogTestSupport;
 import appbrain.stdlog.config.StdlogLevel;
 import appbrain.stdlog.config.StdlogProperties;
 import appbrain.stdlog.core.StdlogEmitter;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
@@ -24,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Ejercita {@code doFilterInternal} de punta a punta (via {@code doFilter}) para cubrir
@@ -151,6 +151,28 @@ class ControllerBodyAndOutLoggingFilterBehaviorTest {
         assertEquals("OrdersController#list", in.get("operation"));
         assertEquals("GET /orders", in.get("route"));
         assertEquals("uuid-42", in.get("request_id"));
+    }
+
+    @Test
+    void shouldKeepTraceAndSpanIdsCapturedBeforeMdcIsCleared() throws Exception {
+        appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
+        MDC.put("traceId", "trace-controller");
+        MDC.put("spanId", "span-controller");
+        StdlogProperties props = noBodyProps();
+
+        ControllerBodyAndOutLoggingFilter filter = filter(props);
+        filter.doFilter(new MockHttpServletRequest("GET", "/orders"), new MockHttpServletResponse(), (r, s) -> {
+            MDC.remove("traceId");
+            MDC.remove("spanId");
+            ((HttpServletResponse) s).setStatus(200);
+        });
+
+        Map<String, Object> in = payload(0);
+        Map<String, Object> out = payload(1);
+        assertEquals("trace-controller", in.get("trace_id"));
+        assertEquals("span-controller", in.get("span_id"));
+        assertEquals("trace-controller", out.get("trace_id"));
+        assertEquals("span-controller", out.get("span_id"));
     }
 
     @Test

@@ -4,11 +4,11 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import net.logstash.logback.argument.StructuredArgument;
 import org.slf4j.LoggerFactory;
 import org.slf4j.Marker;
+import tools.jackson.core.JsonGenerator;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.StringWriter;
 import java.util.Map;
@@ -56,7 +56,7 @@ public final class StdlogTestSupport {
         }
         try {
             StringWriter sw = new StringWriter();
-            JsonGenerator gen = MAPPER.getFactory().createGenerator(sw);
+            JsonGenerator gen = MAPPER.createGenerator(sw);
             gen.writeStartObject();
             arg.writeTo(gen);
             gen.writeEndObject();

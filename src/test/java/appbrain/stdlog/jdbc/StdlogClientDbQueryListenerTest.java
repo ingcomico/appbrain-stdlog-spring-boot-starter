@@ -276,6 +276,20 @@ class StdlogClientDbQueryListenerTest {
     }
 
     @Test
+    void shouldIncludeTraceAndSpanIdsFromMdc() {
+        appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
+        MDC.put("traceId", "trace-client-db");
+        MDC.put("spanId", "span-client-db");
+        StdlogProperties props = props();
+
+        new StdlogClientDbQueryListener(props).afterQuery(execInfo(1, null), queries("SELECT 1"));
+
+        Map<String, Object> payload = onlyPayload();
+        assertEquals("trace-client-db", payload.get("trace_id"));
+        assertEquals("span-client-db", payload.get("span_id"));
+    }
+
+    @Test
     void shouldUseDataSourceNameOverPoolNameWhenPresent() {
         appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
         StdlogProperties props = props();
