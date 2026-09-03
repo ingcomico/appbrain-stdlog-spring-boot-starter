@@ -21,6 +21,7 @@ import org.springframework.http.server.reactive.ServerHttpRequestDecorator;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.http.server.reactive.ServerHttpResponseDecorator;
 import org.springframework.util.AntPathMatcher;
+import org.springframework.web.filter.reactive.ServerWebExchangeContextFilter;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.reactive.HandlerMapping;
 import org.springframework.web.server.ServerWebExchange;
@@ -116,6 +117,9 @@ public class StdlogWebFilter implements WebFilter, Ordered {
                 .contextWrite(ctx -> {
                     ctx = ctx.put(StdlogReactorContext.REQUEST_ID, fRequestId);
                     if (fExcluded) ctx = ctx.put(StdlogReactorContext.EXCLUDED, Boolean.TRUE);
+                    // El exchange también en el Context (misma key que ServerWebExchangeContextFilter)
+                    // para que los clientes salientes resuelvan operation/route de forma perezosa.
+                    ctx = ctx.put(ServerWebExchangeContextFilter.EXCHANGE_CONTEXT_ATTRIBUTE, exchange);
                     return ctx;
                 });
     }
