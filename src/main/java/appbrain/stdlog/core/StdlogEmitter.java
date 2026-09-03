@@ -49,16 +49,17 @@ public final class StdlogEmitter {
      * @param stdlog  payload del evento; se emite bajo la clave {@code "stdlog"} en el JSON
      */
     public static void emit(Logger logger, StdlogLevel level, Map<String, Object> stdlog) {
-        if (logger == null || level == null || stdlog == null || isSuppressedByExclusion(level)) return;
+        if (logger == null || level == null || stdlog == null || isSuppressedByExclusion(level)
+                || !isEnabled(logger, level)) return;
 
         stdlog = StdlogTraceCorrelation.enrich(stdlog);
 
         switch (level) {
-            case TRACE -> { if (logger.isTraceEnabled()) logger.trace(append("stdlog", stdlog), "stdlog"); }
-            case DEBUG -> { if (logger.isDebugEnabled()) logger.debug(append("stdlog", stdlog), "stdlog"); }
-            case INFO  -> { if (logger.isInfoEnabled())  logger.info (append("stdlog", stdlog), "stdlog"); }
-            case WARN  -> { if (logger.isWarnEnabled())  logger.warn (append("stdlog", stdlog), "stdlog"); }
-            case ERROR -> { if (logger.isErrorEnabled()) logger.error(append("stdlog", stdlog), "stdlog"); }
+            case TRACE -> logger.trace(append("stdlog", stdlog), "stdlog");
+            case DEBUG -> logger.debug(append("stdlog", stdlog), "stdlog");
+            case INFO  -> logger.info (append("stdlog", stdlog), "stdlog");
+            case WARN  -> logger.warn (append("stdlog", stdlog), "stdlog");
+            case ERROR -> logger.error(append("stdlog", stdlog), "stdlog");
         }
     }
 
@@ -73,17 +74,28 @@ public final class StdlogEmitter {
      * @param t       excepción asociada al evento; puede ser {@code null}
      */
     public static void emit(Logger logger, StdlogLevel level, Map<String, Object> stdlog, Throwable t) {
-        if (logger == null || level == null || stdlog == null || isSuppressedByExclusion(level)) return;
+        if (logger == null || level == null || stdlog == null || isSuppressedByExclusion(level)
+                || !isEnabled(logger, level)) return;
 
         stdlog = StdlogTraceCorrelation.enrich(stdlog);
 
         switch (level) {
-            case TRACE -> { if (logger.isTraceEnabled()) logger.trace(append("stdlog", stdlog), "stdlog", t); }
-            case DEBUG -> { if (logger.isDebugEnabled()) logger.debug(append("stdlog", stdlog), "stdlog", t); }
-            case INFO  -> { if (logger.isInfoEnabled())  logger.info (append("stdlog", stdlog), "stdlog", t); }
-            case WARN  -> { if (logger.isWarnEnabled())  logger.warn (append("stdlog", stdlog), "stdlog", t); }
-            case ERROR -> { if (logger.isErrorEnabled()) logger.error(append("stdlog", stdlog), "stdlog", t); }
+            case TRACE -> logger.trace(append("stdlog", stdlog), "stdlog", t);
+            case DEBUG -> logger.debug(append("stdlog", stdlog), "stdlog", t);
+            case INFO  -> logger.info (append("stdlog", stdlog), "stdlog", t);
+            case WARN  -> logger.warn (append("stdlog", stdlog), "stdlog", t);
+            case ERROR -> logger.error(append("stdlog", stdlog), "stdlog", t);
         }
+    }
+
+    private static boolean isEnabled(Logger logger, StdlogLevel level) {
+        return switch (level) {
+            case TRACE -> logger.isTraceEnabled();
+            case DEBUG -> logger.isDebugEnabled();
+            case INFO -> logger.isInfoEnabled();
+            case WARN -> logger.isWarnEnabled();
+            case ERROR -> logger.isErrorEnabled();
+        };
     }
 
     private static boolean isSuppressedByExclusion(StdlogLevel level) {

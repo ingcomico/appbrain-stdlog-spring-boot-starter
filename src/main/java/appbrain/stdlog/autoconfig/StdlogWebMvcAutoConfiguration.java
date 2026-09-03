@@ -2,6 +2,8 @@ package appbrain.stdlog.autoconfig;
 
 import appbrain.stdlog.web.StdlogMvcOperationInterceptor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -14,6 +16,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * esté disponible en el MDC desde el inicio del procesamiento MVC.</p>
  */
 @AutoConfiguration
+@ConditionalOnClass(WebMvcConfigurer.class)
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class StdlogWebMvcAutoConfiguration {
 
     @Bean

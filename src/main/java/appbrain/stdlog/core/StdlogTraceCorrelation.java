@@ -54,32 +54,58 @@ public final class StdlogTraceCorrelation {
     }
 
     private static TraceIds currentOpenTelemetrySpan() {
-        try {
-            Class<?> spanClass = Class.forName("io.opentelemetry.api.trace.Span");
-            Method current = spanClass.getMethod("current");
-            Object span = current.invoke(null);
-            if (span == null) {
+        return OpenTelemetryAccess.currentSpan();
+    }
+
+    private static final class OpenTelemetryAccess {
+        private static final Methods METHODS = resolveMethods();
+
+        private OpenTelemetryAccess() {}
+
+        private static TraceIds currentSpan() {
+            if (METHODS == null) return TraceIds.empty();
+
+            try {
+                Object span = METHODS.current().invoke(null);
+                if (span == null) {
+                    return TraceIds.empty();
+                }
+
+                Object spanContext = METHODS.getSpanContext().invoke(span);
+                if (spanContext == null) {
+                    return TraceIds.empty();
+                }
+
+                Object valid = METHODS.isValid().invoke(spanContext);
+                if (!Boolean.TRUE.equals(valid)) {
+                    return TraceIds.empty();
+                }
+
+                return new TraceIds(
+                        (String) METHODS.getTraceId().invoke(spanContext),
+                        (String) METHODS.getSpanId().invoke(spanContext));
+            } catch (Throwable ignored) {
                 return TraceIds.empty();
             }
-
-            Method getSpanContext = span.getClass().getMethod("getSpanContext");
-            Object spanContext = getSpanContext.invoke(span);
-            if (spanContext == null) {
-                return TraceIds.empty();
-            }
-
-            Method isValid = spanContext.getClass().getMethod("isValid");
-            Object valid = isValid.invoke(spanContext);
-            if (!Boolean.TRUE.equals(valid)) {
-                return TraceIds.empty();
-            }
-
-            Method getTraceId = spanContext.getClass().getMethod("getTraceId");
-            Method getSpanId = spanContext.getClass().getMethod("getSpanId");
-            return new TraceIds((String) getTraceId.invoke(spanContext), (String) getSpanId.invoke(spanContext));
-        } catch (Throwable ignored) {
-            return TraceIds.empty();
         }
+
+        private static Methods resolveMethods() {
+            try {
+                Class<?> spanClass = Class.forName("io.opentelemetry.api.trace.Span");
+                Class<?> spanContextClass = Class.forName("io.opentelemetry.api.trace.SpanContext");
+                return new Methods(
+                        spanClass.getMethod("current"),
+                        spanClass.getMethod("getSpanContext"),
+                        spanContextClass.getMethod("isValid"),
+                        spanContextClass.getMethod("getTraceId"),
+                        spanContextClass.getMethod("getSpanId"));
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+
+        private record Methods(Method current, Method getSpanContext, Method isValid,
+                               Method getTraceId, Method getSpanId) {}
     }
 
     private static boolean isBlank(Object value) {

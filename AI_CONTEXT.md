@@ -32,7 +32,7 @@ Antes de realizar cambios arquitectonicos, estructurales o que afecten contratos
 
 ## Proposito del Proyecto
 
-`appbrain-stdlog-spring-boot-starter` es un starter Maven para logging estructurado JSON en aplicaciones Spring Boot servlet.
+`appbrain-stdlog-spring-boot-starter` es un starter Maven para logging estructurado JSON en aplicaciones Spring Boot servlet/MVC y WebFlux.
 
 El proyecto provee:
 
@@ -133,9 +133,8 @@ El codigo principal esta bajo `src/main/java/appbrain/stdlog`.
 
 ### Recursos Publicos
 
-- `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` registra nueve autoconfiguraciones (`StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration`, `StdlogWebFluxAutoConfiguration`, `StdlogReactorContextPropagationAutoConfiguration`, `StdlogRestClientAutoConfiguration`, `StdlogWebClientAutoConfiguration`, `StdlogJdbcAutoConfiguration`, `StdlogR2dbcAutoConfiguration`, `StdlogErrorAutoConfiguration`). `StdlogWebFluxAutoConfiguration` y `StdlogReactorContextPropagationAutoConfiguration` son `@ConditionalOnWebApplication(REACTIVE)` y no co-activan con las servlet. `StdlogWebFluxAutoConfiguration` registra dos beans: `StdlogWebFilter` y `StdlogWebExceptionHandler` (ambos gated por `stdlog.controller.webflux.enabled`). La Fase 3 no añade una linea nueva a `AutoConfiguration.imports`.
+- `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` registra nueve autoconfiguraciones (`StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration`, `StdlogWebFluxAutoConfiguration`, `StdlogReactorContextPropagationAutoConfiguration`, `StdlogRestClientAutoConfiguration`, `StdlogWebClientAutoConfiguration`, `StdlogJdbcAutoConfiguration`, `StdlogR2dbcAutoConfiguration`, `StdlogErrorAutoConfiguration`). `StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration` y `StdlogErrorAutoConfiguration` son `@ConditionalOnWebApplication(SERVLET)`; las dos ultimas tambien comprueban las clases MVC que exponen. `StdlogWebFluxAutoConfiguration` y `StdlogReactorContextPropagationAutoConfiguration` son `@ConditionalOnWebApplication(REACTIVE)`, por lo que las vias servlet y reactiva no co-activan. `StdlogWebFluxAutoConfiguration` registra dos beans: `StdlogWebFilter` y `StdlogWebExceptionHandler` (ambos gated por `stdlog.controller.webflux.enabled`). La Fase 3 no añade una linea nueva a `AutoConfiguration.imports`.
 - `META-INF/spring.factories` registra `StdlogVersionEnvironmentPostProcessor` como `EnvironmentPostProcessor`.
-- Existe ademas el archivo `META-INF/spring/org.springframework.boot.EnvironmentPostProcessor` (sin sufijo `.imports`), pero Spring Boot 4 no lo lee por ningun mecanismo: es un archivo inerte heredado y debe eliminarse (ver ADR-0001, Riesgos).
 - `stdlog/logback-spring-stdlog.xml` define un appender JSON de consola, logger `stdlog`, root logger y campo `stdlog_lib_version`.
 - `stdlog-version.properties` alimenta la version de libreria expuesta como property `stdlog.libVersion`.
 
@@ -291,7 +290,7 @@ Existen tests bajo `src/test/java` para:
 - resolver de caller;
 - post-procesador de version.
 
-Suite ejecutada en `main` (`mvn test`): 228 tests, 0 fallos, `BUILD SUCCESS`, verificado en JDK 17 y JDK 25 (cuenta al cierre de `ADR-0008` Fase 3).
+Suite ejecutada en `main` (`mvn clean test`): 235 tests, 0 fallos, `BUILD SUCCESS`, verificado en JDK 17 y JDK 25.
 
 ## Limitaciones Actuales
 
