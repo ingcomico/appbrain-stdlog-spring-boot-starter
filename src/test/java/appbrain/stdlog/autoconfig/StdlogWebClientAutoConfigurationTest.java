@@ -38,9 +38,10 @@ class StdlogWebClientAutoConfigurationTest {
     }
 
     @Test
-    void shouldNotRegisterInNonServletApplications() {
+    void shouldRegisterInNonServletApplicationsToo() {
+        // ADR-0008 Fase 2: se quitó la restricción a apps servlet; basta con WebClient en classpath.
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(StdlogWebClientAutoConfiguration.class))
-                .run(context -> assertThat(context).doesNotHaveBean(StdlogWebClientExchangeFilter.class));
+                .run(context -> assertThat(context).hasSingleBean(StdlogWebClientExchangeFilter.class));
     }
 }

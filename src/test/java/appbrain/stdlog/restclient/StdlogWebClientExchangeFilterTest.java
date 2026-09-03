@@ -205,6 +205,38 @@ class StdlogWebClientExchangeFilterTest {
     }
 
     @Test
+    void shouldTakeRequestIdFromReactorContextWhenMdcIsEmpty() {
+        // ADR-0008 Fase 2: en una app WebFlux no hay MDC; el request_id lo puebla
+        // StdlogWebFilter en el Reactor Context.
+        appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
+        assertNull(MDC.get("request_id"));
+
+        client(props(), req -> Mono.just(json(200, "{}")))
+                .get().uri("https://api.example.com/ok")
+                .retrieve().bodyToMono(String.class)
+                .contextWrite(ctx -> ctx.put("request_id", "ctx-req-1").put("operation", "ReactiveCtrl#get"))
+                .block();
+
+        Map<String, Object> payload = onlyPayload();
+        assertEquals("ctx-req-1", payload.get("request_id"));
+        assertEquals("ReactiveCtrl#get", payload.get("operation"));
+    }
+
+    @Test
+    void shouldPreferMdcOverReactorContext() {
+        appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
+        MDC.put("request_id", "from-mdc");
+
+        client(props(), req -> Mono.just(json(200, "{}")))
+                .get().uri("https://api.example.com/ok")
+                .retrieve().bodyToMono(String.class)
+                .contextWrite(ctx -> ctx.put("request_id", "from-ctx"))
+                .block();
+
+        assertEquals("from-mdc", onlyPayload().get("request_id"));
+    }
+
+    @Test
     void shouldIncludeTraceAndSpanIdsFromMdc() {
         appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
         MDC.put("traceId", "trace-wc");

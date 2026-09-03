@@ -4,6 +4,7 @@ import appbrain.stdlog.config.StdlogLevel;
 import appbrain.stdlog.config.StdlogProperties;
 import appbrain.stdlog.core.StdlogEmitter;
 import appbrain.stdlog.core.StdlogModeResolver;
+import appbrain.stdlog.core.StdlogReactorContext;
 import appbrain.stdlog.util.StdlogCallerResolver;
 import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
@@ -19,10 +20,12 @@ import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
 import org.springframework.web.reactive.function.client.ExchangeFunction;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.context.ContextView;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -63,14 +66,36 @@ public class StdlogWebClientExchangeFilter implements ExchangeFilterFunction {
         if (rc == null) {
             return next.exchange(request);
         }
+        return Mono.deferContextual(ctxView -> doFilter(request, next, rc, ctxView));
+    }
 
+    private Mono<ClientResponse> doFilter(ClientRequest request, ExchangeFunction next,
+            StdlogProperties.Restclient rc, ContextView ctxView) {
+
+        // Correlación: MDC primero (app servlet + .block()); si está vacío, Reactor Context
+        // (app WebFlux — lo puebla StdlogWebFilter). Ver ADR-0008 Fase 2.
         Map<String, String> mdc = MDC.getCopyOfContextMap();
+        String requestId = firstNonBlank(value(mdc, "request_id"),
+                StdlogReactorContext.get(ctxView, StdlogReactorContext.REQUEST_ID));
+        String operation = firstNonBlank(value(mdc, "operation"),
+                StdlogReactorContext.get(ctxView, StdlogReactorContext.OPERATION));
+        boolean excluded = mdc != null && mdc.containsKey(StdlogEmitter.MDC_EXCLUDED)
+                || StdlogReactorContext.isExcluded(ctxView);
+
+        Map<String, String> mdcForEmit = (mdc != null && !mdc.isEmpty()) ? mdc : null;
+        if (mdcForEmit == null && (requestId != null || operation != null || excluded)) {
+            mdcForEmit = new HashMap<>();
+            if (requestId != null) mdcForEmit.put("request_id", requestId);
+            if (operation != null) mdcForEmit.put("operation", operation);
+            if (excluded) mdcForEmit.put(StdlogEmitter.MDC_EXCLUDED, "true");
+        }
+
         Ctx ctx = new Ctx(
-                value(mdc, "request_id"),
-                value(mdc, "operation"),
+                requestId,
+                operation,
                 rc.isCaptureCallId() ? UUID.randomUUID().toString() : null,
                 rc.isCaptureSource() ? resolveSource(rc) : null,
-                mdc,
+                mdcForEmit,
                 STDLOG.isDebugEnabled(),
                 System.nanoTime());
 
