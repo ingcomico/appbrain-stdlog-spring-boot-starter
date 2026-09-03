@@ -17,7 +17,12 @@ Antes de realizar cambios arquitectonicos, estructurales o que afecten contratos
 
 1. Leer este archivo.
 2. Usar Codebase Memory para entender la estructura del codigo afectado y sus relaciones.
-3. Revisar los ADR relevantes dentro de `docs/adr/`. ADRs vigentes: `0001` (migracion a Spring Boot 4 / Jackson 3), `0002` (correlacion de tracing MDC + OpenTelemetry por reflexion), `0003` (salida JSON via Logback + logstash-logback-encoder). Los tres estan en estado `Aceptado`; la suite de tests pasa (177 tests, 0 fallos, JDK 17).
+3. Revisar los ADR relevantes dentro de `docs/adr/`. ADRs vigentes (todos en estado `Aceptado`):
+   - `0001` — migracion de `main` a Spring Boot 4 / Jackson 3 (su regla de "congelar Boot 3" fue anulada por `0005`).
+   - `0002` — correlacion de tracing MDC + OpenTelemetry por reflexion.
+   - `0003` — salida JSON via Logback + logstash-logback-encoder.
+   - `0004` — la documentacion afectada se actualiza en el mismo commit/PR que el cambio.
+   - `0005` — dos lineas de mantenimiento (`main` = Boot 4, `spring-boot-3.x` = Boot 3) con paridad funcional.
 4. Determinar el impacto antes de modificar codigo.
 5. No duplicar decisiones arquitectonicas en archivos especificos de cada agente.
 6. Si existe una contradiccion entre este archivo, el codigo actual y otros documentos, reportarla antes de asumir cual es correcta.
@@ -38,12 +43,24 @@ El proyecto provee:
 
 Consumidores esperados: aplicaciones Spring Boot que quieran emitir logs estructurados bajo una clave `stdlog` usando SLF4J/Logback y configuracion por properties `stdlog.*`.
 
+## Modelo de Ramas
+
+Existen dos ramas permanentes con paridad funcional (ver `ADR-0005`). Este archivo describe la rama `main`.
+
+| Rama | Spring Boot | Jackson | logstash-encoder | Estado |
+|---|---|---|---|---|
+| `main` | 4.1.0 | 3 (`tools.jackson.core`) | 9.0 | desarrollo activo, referencia de diseño |
+| `spring-boot-3.x` | 3.5.16 | 2 (`com.fasterxml.jackson.core`) | 8.1 | soporte para consumidores Boot 3 |
+
+Ambas ofrecen las mismas capacidades, la misma configuracion `stdlog.*`, el mismo JSON de salida y el mismo comportamiento observable. Difieren solo en la version de Spring Boot, el binding Jackson, la version del encoder y las lineas `import` / recursos `META-INF` / `logback-spring-stdlog.xml` que eso implica. Toda feature o fix transversal entra por `main` y se porta a `spring-boot-3.x` inmediatamente tras el merge. Las ramas de trabajo se borran al mergear.
+
 ## Plataforma y Dependencias
 
 - Artefacto Maven: `appbrain:appbrain-stdlog-spring-boot-starter`.
 - Version declarada en `pom.xml`: `1.0.0`.
-- Java: release 17.
+- Java: bytecode `release` 17; la build corre en JDK 17 a 25.
 - BOM: Spring Boot `4.1.0`.
+- Toolchain de build: `maven-compiler-plugin` 3.14.0 (`<release>17>`), `maven-surefire-plugin` 3.5.4, `jacoco-maven-plugin` 0.8.15.
 - Dependencias relevantes:
   - `spring-boot-autoconfigure`;
   - `spring-boot-restclient`;
@@ -216,7 +233,7 @@ Los payloads custom pasan por `StdlogEmitter`, quedan bajo la clave `stdlog` y s
 
 ## Decisiones Tecnicas Actuales
 
-- La linea actual apunta a Spring Boot 4.1.0 y Java 17 (branch de trabajo `feature/spring-boot-4-migration`).
+- `main` apunta a Spring Boot 4.1.0, bytecode Java 17, build en JDK 17-25. La linea Spring Boot 3 vive en `spring-boot-3.x` (ver "Modelo de Ramas" y `ADR-0005`).
 - El starter esta orientado a aplicaciones servlet, no WebFlux.
 - Logback/logstash encoder (v9.0) es el mecanismo de salida JSON provisto.
 - `stdlog.mode=AUTO` cae a no productivo cuando `STDLOG_MODE` no esta definido.
@@ -242,7 +259,7 @@ Existen tests bajo `src/test/java` para:
 - resolver de caller;
 - post-procesador de version.
 
-Suite ejecutada el 2026-09-02 en la rama `feature/spring-boot-4-migration` (JDK 17, `mvn test`): 177 tests, 0 fallos, `BUILD SUCCESS`.
+Suite ejecutada en `main` (`mvn test`): 177 tests, 0 fallos, `BUILD SUCCESS`, verificado en JDK 17 y JDK 25.
 
 ## Limitaciones Actuales
 
@@ -254,12 +271,11 @@ Suite ejecutada el 2026-09-02 en la rama `feature/spring-boot-4-migration` (JDK 
 - La captura de source en HTTP saliente usa stacktrace-walk y depende de `consumerBasePackage`; tiene costo de CPU por llamada cuando se habilita.
 - Bodies, headers y parametros SQL pueden contener datos sensibles; la configuracion segura depende del consumidor.
 - Los directorios `release` y `target` no estan indexados ni deben tratarse como fuente estructural del codigo.
-- Existen los ADR `0001`, `0002` y `0003` (estado `Aceptado`; suite de tests en verde). El resto de decisiones ya implementadas siguen sin ADR formal.
+- Existen los ADR `0001`-`0005` (estado `Aceptado`; suite de tests en verde). El resto de decisiones ya implementadas siguen sin ADR formal.
 
 ## Decisiones Pendientes
 
-- Resolver la version publica del artefacto: `pom.xml` declara `1.0.0`, mientras `README.md` documenta el flujo de publicacion local como `1.0.0-local`.
-- Eliminar el archivo inerte `META-INF/spring/org.springframework.boot.EnvironmentPostProcessor` (Spring Boot 4 no lo lee; el registro efectivo es `spring.factories`). Ver ADR-0001, Riesgos.
+- Resolver la version publica de los artefactos: `pom.xml` declara `1.0.0` en ambas ramas y `README.md` documenta `1.0.0-local`; falta ademas definir coordenadas distintas por linea (`main` Boot 4 vs `spring-boot-3.x` Boot 3), ver `ADR-0005`.
 - Definir si el reemplazo `@Primary DataSource` es el contrato definitivo para JDBC o si debe existir una alternativa menos invasiva.
 - Definir politica formal de soporte para multiples datasources.
 - Definir si se soportara WebFlux/WebClient o si el alcance queda explicitamente limitado a servlet/MVC, `RestTemplate` y `RestClient`.
@@ -382,6 +398,8 @@ Si existe contradiccion entre estas fuentes, reportarla antes de modificar el si
 - Migracion a Spring Boot 4.1.0 y Jackson 3, con Java 17 como `release` minimo -> **ADR-0001**.
 - Estrategia de correlacion de tracing: MDC primero y OpenTelemetry opcional por reflexion -> **ADR-0002**.
 - Estrategia de logging JSON basada en Logback/logstash encoder y archivo `logback-spring-stdlog.xml` provisto por el starter -> **ADR-0003**.
+- La documentacion afectada se actualiza en el mismo commit/PR que el cambio -> **ADR-0004**.
+- Dos lineas de mantenimiento (`main` Boot 4, `spring-boot-3.x` Boot 3) con paridad funcional -> **ADR-0005**.
 
 ### Pendientes
 
