@@ -2,14 +2,14 @@ package appbrain.stdlog.autoconfig;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
-import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class StdlogErrorAutoConfigurationTest {
 
-    private final ApplicationContextRunner runner = new ApplicationContextRunner()
+    private final WebApplicationContextRunner runner = new WebApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(StdlogErrorAutoConfiguration.class));
 
     @Test
