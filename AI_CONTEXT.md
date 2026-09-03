@@ -25,6 +25,7 @@ Antes de realizar cambios arquitectonicos, estructurales o que afecten contratos
    - `0005` — dos lineas de mantenimiento (`main` = Boot 4, `spring-boot-3.x` = Boot 3) con paridad funcional.
    - `0006` — logging del evento `CLIENT_HTTP` para `WebClient` (cliente saliente reactivo, solo en apps servlet).
    - `0007` — logging del evento `CLIENT_DB` para R2DBC (base de datos reactiva, add-on no limitado a apps reactivas).
+   - `0008` — soporte de aplicaciones WebFlux (entrada HTTP reactiva) como stack de primera clase. Alcance decidido; implementacion por fases en `appbrain.stdlog.webflux`, sin tocar la via servlet.
 4. Determinar el impacto antes de modificar codigo.
 5. No duplicar decisiones arquitectonicas en archivos especificos de cada agente.
 6. Si existe una contradiccion entre este archivo, el codigo actual y otros documentos, reportarla antes de asumir cual es correcta.
@@ -250,7 +251,7 @@ Los payloads custom pasan por `StdlogEmitter`, quedan bajo la clave `stdlog` y s
 ## Decisiones Tecnicas Actuales
 
 - `main` apunta a Spring Boot 4.1.0, bytecode Java 17, build en JDK 17-25. La linea Spring Boot 3 vive en `spring-boot-3.x` (ver "Modelo de Ramas" y `ADR-0005`).
-- La entrada HTTP del starter es servlet/MVC (no WebFlux); los clientes salientes cubren stacks bloqueantes y reactivos (`WebClient`, R2DBC).
+- La entrada HTTP del starter es servlet/MVC hoy; `ADR-0008` decidio ampliarla a WebFlux (entrada reactiva) por fases, en `appbrain.stdlog.webflux` con `@ConditionalOnWebApplication(REACTIVE)`, sin tocar la via servlet. Los clientes salientes cubren stacks bloqueantes y reactivos (`WebClient`, R2DBC).
 - Logback/logstash encoder (v9.0) es el mecanismo de salida JSON provisto.
 - `stdlog.mode=AUTO` cae a no productivo cuando `STDLOG_MODE` no esta definido.
 - `RestTemplate` se envuelve con `BufferingClientHttpRequestFactory` para poder leer bodies.
@@ -296,7 +297,7 @@ Suite ejecutada en `main` (`mvn test`): 177 tests, 0 fallos, `BUILD SUCCESS`, ve
 - Definir si se publica a un repositorio remoto (Maven Central / JitPack) ademas del flujo local `release/`. El esquema de version por linea (`4.x.y` / `3.x.y`) ya esta decidido en `ADR-0005`.
 - Definir si el reemplazo `@Primary DataSource` / `@Primary ConnectionFactory` es el contrato definitivo o si debe existir una alternativa menos invasiva.
 - Definir politica formal de soporte para multiples datasources / connection factories.
-- Definir si el alcance del starter se amplia a aplicaciones WebFlux completas (entrada reactiva). Hoy los clientes salientes reactivos (`WebClient`, R2DBC) estan cubiertos por `ADR-0006`/`ADR-0007`, pero no la entrada HTTP reactiva. Candidato a ADR de alcance con plan por fases (ver conversacion de diseño).
+- Ejecutar las fases de `ADR-0008` (soporte WebFlux): Fase 1 `StdlogWebFilter` (`CONTROLLER_HTTP` + evento de error + `request_id`/`operation`/exclusion en Reactor Context); Fase 2 correlacion downstream (`WebClient`/R2DBC leen el Context, abrir la auto-config WebClient a `REACTIVE`); Fase 3 `@StdlogExcluded` reactivo, `StdlogCustom` reactivo, evento de error de mayor fidelidad.
 - Definir criterios de seguridad por defecto para headers, bodies y parametros sensibles.
 - Definir si el ciclo `StdlogCustom`/`StdlogEmitter` debe aceptarse como patron de fachada estatica o refactorizarse.
 
@@ -420,10 +421,10 @@ Si existe contradiccion entre estas fuentes, reportarla antes de modificar el si
 - Dos lineas de mantenimiento (`main` Boot 4, `spring-boot-3.x` Boot 3) con paridad funcional -> **ADR-0005**.
 - Logging del evento `CLIENT_HTTP` para `WebClient` (cliente saliente reactivo) -> **ADR-0006**.
 - Logging del evento `CLIENT_DB` para R2DBC (base de datos reactiva) -> **ADR-0007**.
+- Soporte de aplicaciones WebFlux (entrada HTTP reactiva) -> **ADR-0008** (alcance decidido; implementacion por fases).
 
 ### Pendientes
 
-- Alcance oficial del starter para aplicaciones WebFlux completas / entrada reactiva (los clientes `WebClient` y R2DBC ya estan cubiertos por `ADR-0006`/`ADR-0007`).
 - Estrategia de instrumentacion de base de datos: reemplazo `@Primary DataSource` / `@Primary ConnectionFactory` y politica para multiples datasources/connection factories.
 - Politica de modo `AUTO` y default a `NON_PROD` cuando `STDLOG_MODE` no esta definido.
 - Politica de exclusion: suprimir solo `TRACE/DEBUG/INFO` y nunca `WARN/ERROR`.
