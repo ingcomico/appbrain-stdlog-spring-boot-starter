@@ -26,9 +26,10 @@ Antes de realizar cambios arquitectonicos, estructurales o que afecten contratos
    - `0006` — logging del evento `CLIENT_HTTP` para `WebClient` (cliente saliente reactivo, solo en apps servlet).
    - `0007` — logging del evento `CLIENT_DB` para R2DBC (base de datos reactiva, add-on no limitado a apps reactivas).
    - `0008` — soporte de aplicaciones WebFlux (entrada HTTP reactiva) como stack de primera clase. Implementado por fases (todas hechas) en `appbrain.stdlog.webflux`, sin tocar la via servlet.
+   - `0010` — enmascaramiento de datos sensibles en el punto unico de emision. Resuelve el hallazgo F-04 de la auditoria.
    - `0016` — integracion continua y verificacion automatica de la paridad entre lineas. Da cumplimiento a `ADR-0005`.
 
-   Los numeros `0009`-`0015` estan **reservados** para los hallazgos pendientes de la auditoria tecnica (guardas de classpath ya aplicadas, datos sensibles, fail-safety del logging, orden del filtro, deteccion de entorno, acoplamiento a Logback, versionado del esquema JSON). Se numeraron por tema, no por fecha de creacion, asi que el hueco es deliberado.
+   Los numeros `0009`, `0011`-`0015` siguen **reservados** para los hallazgos pendientes de la auditoria tecnica (guardas de classpath ya aplicadas, datos sensibles, fail-safety del logging, orden del filtro, deteccion de entorno, acoplamiento a Logback, versionado del esquema JSON). Se numeraron por tema, no por fecha de creacion, asi que el hueco es deliberado.
 4. Determinar el impacto antes de modificar codigo.
 5. No duplicar decisiones arquitectonicas en archivos especificos de cada agente.
 6. Si existe una contradiccion entre este archivo, el codigo actual y otros documentos, reportarla antes de asumir cual es correcta.
@@ -105,6 +106,7 @@ El codigo principal esta bajo `src/main/java/appbrain/stdlog`.
   - modo `AUTO`, `PROD`, `NON_PROD`.
 - `appbrain.stdlog.core`: primitives transversales:
   - `StdlogEmitter`;
+  - `StdlogMasker` (enmascarado de valores sensibles antes de emitir; `ADR-0010`);
   - `StdlogModeResolver`;
   - `StdlogTraceCorrelation`;
   - `StdlogReactorContext` (claves de correlacion en el `Context` de Reactor; lo escribe `StdlogWebFilter` y lo lee `StdlogWebClientExchangeFilter`; ver `ADR-0008` Fase 2);
@@ -136,7 +138,7 @@ El codigo principal esta bajo `src/main/java/appbrain/stdlog`.
 
 ### Recursos Publicos
 
-- `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` registra nueve autoconfiguraciones (`StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration`, `StdlogWebFluxAutoConfiguration`, `StdlogReactorContextPropagationAutoConfiguration`, `StdlogRestClientAutoConfiguration`, `StdlogWebClientAutoConfiguration`, `StdlogJdbcAutoConfiguration`, `StdlogR2dbcAutoConfiguration`, `StdlogErrorAutoConfiguration`). `StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration` y `StdlogErrorAutoConfiguration` son `@ConditionalOnWebApplication(SERVLET)`; las dos ultimas tambien comprueban las clases MVC que exponen. `StdlogWebFluxAutoConfiguration` y `StdlogReactorContextPropagationAutoConfiguration` son `@ConditionalOnWebApplication(REACTIVE)`, por lo que las vias servlet y reactiva no co-activan. `StdlogWebFluxAutoConfiguration` registra dos beans: `StdlogWebFilter` y `StdlogWebExceptionHandler` (ambos gated por `stdlog.controller.webflux.enabled`). La Fase 3 no añade una linea nueva a `AutoConfiguration.imports`.
+- `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` registra diez autoconfiguraciones (`StdlogMaskingAutoConfiguration`, `StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration`, `StdlogWebFluxAutoConfiguration`, `StdlogReactorContextPropagationAutoConfiguration`, `StdlogRestClientAutoConfiguration`, `StdlogWebClientAutoConfiguration`, `StdlogJdbcAutoConfiguration`, `StdlogR2dbcAutoConfiguration`, `StdlogErrorAutoConfiguration`). `StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration` y `StdlogErrorAutoConfiguration` son `@ConditionalOnWebApplication(SERVLET)`; las dos ultimas tambien comprueban las clases MVC que exponen. `StdlogWebFluxAutoConfiguration` y `StdlogReactorContextPropagationAutoConfiguration` son `@ConditionalOnWebApplication(REACTIVE)`, por lo que las vias servlet y reactiva no co-activan. `StdlogMaskingAutoConfiguration` no tiene condiciones de classpath —solo depende de `core` y `config`— y transfiere `stdlog.masking.*` al campo estatico de `StdlogMasker` al arrancar. `StdlogWebFluxAutoConfiguration` registra dos beans: `StdlogWebFilter` y `StdlogWebExceptionHandler` (ambos gated por `stdlog.controller.webflux.enabled`). La Fase 3 no añade una linea nueva a `AutoConfiguration.imports`.
 - `META-INF/spring.factories` registra `StdlogVersionEnvironmentPostProcessor` como `EnvironmentPostProcessor`.
 - `stdlog/logback-spring-stdlog.xml` define un appender JSON de consola, logger `stdlog`, root logger y campo `stdlog_lib_version`.
 - `stdlog-version.properties` alimenta la version de libreria expuesta como property `stdlog.libVersion`.
@@ -145,7 +147,7 @@ El codigo principal esta bajo `src/main/java/appbrain/stdlog`.
 
 ### Configuracion `stdlog.*`
 
-`StdlogProperties` expone el prefijo `stdlog` y cuatro secciones: `controller`, `restclient`, `jdbc` y `error`.
+`StdlogProperties` expone el prefijo `stdlog` y cinco secciones: `controller`, `restclient`, `jdbc`, `error` y `masking` (`ADR-0010`: `enabled`, `keys`, `additional-keys`, `placeholder`).
 
 Reglas vigentes:
 
@@ -257,6 +259,7 @@ Los payloads custom pasan por `StdlogEmitter`, quedan bajo la clave `stdlog` y s
 - La correlacion transversal usa MDC y se enriquece lo mas tarde posible, dentro del emitter.
 - Las politicas anti-ruido dependen de `StdlogModeResolver` y se aplican por modulo antes de emitir.
 - Cambios en `StdlogProperties`, `StdlogCustom`, `StdlogExcluded`, archivos `META-INF/spring/*` o `stdlog/logback-spring-stdlog.xml` deben tratarse como cambios de contrato publico.
+- Todo evento pasa por `StdlogEmitter`, que aplica en ese unico punto el enmascarado de datos sensibles (`ADR-0010`). Ningun modulo enmascara por su cuenta: asi un modulo nuevo lo hereda sin hacer nada.
 - Cambios en autoconfiguraciones pueden afectar aplicaciones consumidoras por registrar filtros, interceptores, customizers o reemplazar `DataSource` con un bean `@Primary`.
 
 ## Decisiones Tecnicas Actuales
@@ -311,7 +314,7 @@ Suite ejecutada en `main` (`mvn clean test`): 235 tests, 0 fallos, `BUILD SUCCES
 - En R2DBC, `db.response` (filas devueltas/afectadas) no se emite: en R2DBC el conteo es best-effort y asincrono. En apps WebFlux, `request_id` en `CLIENT_DB` requiere que el consumidor active `Hooks.enableAutomaticContextPropagation()` (el starter provee el `ThreadLocalAccessor`); `operation` no llega a `CLIENT_DB` en WebFlux.
 - Las politicas de exclusion basadas en MDC se propagan solo dentro del mismo thread.
 - La captura de source en HTTP saliente usa stacktrace-walk y depende de `consumerBasePackage`; tiene costo de CPU por llamada cuando se habilita.
-- Bodies, headers y parametros SQL pueden contener datos sensibles; la configuracion segura depende del consumidor.
+- El enmascarado de datos sensibles (`ADR-0010`) actua **por nombre de clave**, no por contenido del valor: un campo sensible con un nombre no previsto sigue saliendo, y el consumidor debe anadirlo con `stdlog.masking.additional-keys`. Sobre bodies que llegan como texto la pasada es best-effort declarada (opera sobre el texto, no sobre un arbol, para funcionar tambien con bodies truncados o JSON invalido).
 - Los directorios `release` y `target` no estan indexados ni deben tratarse como fuente estructural del codigo.
 - Existen los ADR `0001`-`0008` y `0016` (estado `Aceptado`; suite de tests en verde). El resto de decisiones ya implementadas siguen sin ADR formal.
 - `ADR-0004` (la documentacion viaja en el mismo commit) **no tiene verificacion automatica**: depende de revision humana. `ADR-0005` si la tiene desde `ADR-0016`.
@@ -321,7 +324,6 @@ Suite ejecutada en `main` (`mvn clean test`): 235 tests, 0 fallos, `BUILD SUCCES
 - Definir si se publica a un repositorio remoto (Maven Central / JitPack) ademas del flujo local `release/`. El esquema de version por linea (`4.x.y` / `3.x.y`) ya esta decidido en `ADR-0005`.
 - Definir si el reemplazo `@Primary DataSource` / `@Primary ConnectionFactory` es el contrato definitivo o si debe existir una alternativa menos invasiva.
 - Definir politica formal de soporte para multiples datasources / connection factories.
-- Definir criterios de seguridad por defecto para headers, bodies y parametros sensibles.
 - Definir si el ciclo `StdlogCustom`/`StdlogEmitter` debe aceptarse como patron de fachada estatica o refactorizarse.
 
 ## Reglas para Cambios

@@ -52,6 +52,9 @@ public final class StdlogEmitter {
         if (logger == null || level == null || stdlog == null || isSuppressedByExclusion(level)
                 || !isEnabled(logger, level)) return;
 
+        // Orden deliberado: primero enmascarar, luego enriquecer. El enmascarado va después
+        // del chequeo de nivel para no pagarlo en eventos que no se van a emitir (ADR-0010).
+        stdlog = StdlogMasker.mask(stdlog);
         stdlog = StdlogTraceCorrelation.enrich(stdlog);
 
         switch (level) {
@@ -77,6 +80,9 @@ public final class StdlogEmitter {
         if (logger == null || level == null || stdlog == null || isSuppressedByExclusion(level)
                 || !isEnabled(logger, level)) return;
 
+        // Orden deliberado: primero enmascarar, luego enriquecer. El enmascarado va después
+        // del chequeo de nivel para no pagarlo en eventos que no se van a emitir (ADR-0010).
+        stdlog = StdlogMasker.mask(stdlog);
         stdlog = StdlogTraceCorrelation.enrich(stdlog);
 
         switch (level) {

@@ -1,3 +1,4 @@
+appbrain.stdlog.autoconfig.StdlogMaskingAutoConfiguration
 appbrain.stdlog.autoconfig.StdlogAutoConfiguration
 appbrain.stdlog.autoconfig.StdlogWebMvcAutoConfiguration
 appbrain.stdlog.autoconfig.StdlogWebFluxAutoConfiguration
