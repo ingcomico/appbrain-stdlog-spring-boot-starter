@@ -36,7 +36,7 @@ Antes de realizar cambios arquitectonicos, estructurales o que afecten contratos
 
 El proyecto provee:
 
-- logging de requests/responses HTTP entrantes como `CONTROLLER_HTTP`;
+- logging de requests/responses HTTP entrantes como `CONTROLLER_HTTP`: servlet/MVC y, desde `ADR-0008` Fase 1, WebFlux (entrada reactiva);
 - logging de llamadas HTTP salientes de `RestTemplate` y `RestClient` como `CLIENT_HTTP`;
 - logging de queries a base de datos como `CLIENT_DB`: JDBC via `datasource-proxy` y R2DBC via `r2dbc-proxy` (ver `ADR-0007`);
 - API publica de eventos de negocio mediante `StdlogCustom`;
@@ -117,6 +117,9 @@ El codigo principal esta bajo `src/main/java/appbrain/stdlog`.
   - `StdlogHttpBodyDecoder`.
 - `appbrain.stdlog.r2dbc`: listener `r2dbc-proxy` para queries reactivas (`CLIENT_DB`, ver `ADR-0007`):
   - `StdlogR2dbcQueryListener`.
+- `appbrain.stdlog.webflux`: instrumentacion de entrada HTTP reactiva (`ADR-0008` Fase 1):
+  - `StdlogWebFilter` (`WebFilter` que emite `CONTROLLER_HTTP` + evento de error, escribe la correlacion en el Reactor Context);
+  - `StdlogReactorContext` (claves de correlacion en el Context).
 - `appbrain.stdlog.jdbc`: listener `datasource-proxy`:
   - `StdlogClientDbQueryListener`.
 - `appbrain.stdlog.error`: utilidades de stack trace de aplicacion:
@@ -126,7 +129,7 @@ El codigo principal esta bajo `src/main/java/appbrain/stdlog`.
 
 ### Recursos Publicos
 
-- `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` registra siete autoconfiguraciones (`StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration`, `StdlogRestClientAutoConfiguration`, `StdlogWebClientAutoConfiguration`, `StdlogJdbcAutoConfiguration`, `StdlogR2dbcAutoConfiguration`, `StdlogErrorAutoConfiguration`).
+- `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` registra ocho autoconfiguraciones (`StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration`, `StdlogWebFluxAutoConfiguration`, `StdlogRestClientAutoConfiguration`, `StdlogWebClientAutoConfiguration`, `StdlogJdbcAutoConfiguration`, `StdlogR2dbcAutoConfiguration`, `StdlogErrorAutoConfiguration`). `StdlogWebFluxAutoConfiguration` es `@ConditionalOnWebApplication(REACTIVE)` y no co-activa con las servlet.
 - `META-INF/spring.factories` registra `StdlogVersionEnvironmentPostProcessor` como `EnvironmentPostProcessor`.
 - Existe ademas el archivo `META-INF/spring/org.springframework.boot.EnvironmentPostProcessor` (sin sufijo `.imports`), pero Spring Boot 4 no lo lee por ningun mecanismo: es un archivo inerte heredado y debe eliminarse (ver ADR-0001, Riesgos).
 - `stdlog/logback-spring-stdlog.xml` define un appender JSON de consola, logger `stdlog`, root logger y campo `stdlog_lib_version`.
@@ -158,6 +161,8 @@ Reglas vigentes:
 - un `WebMvcConfigurer` que lo aplica a `/**` con orden `-100`.
 
 El flujo de controller emite eventos `CONTROLLER_HTTP` para entrada y salida. El filtro puede envolver request/response con `ContentCaching*Wrapper` segun `stdlog.controller.log-request-body` y `stdlog.controller.log-response-body`.
+
+En aplicaciones **WebFlux** (`ADR-0008` Fase 1), `StdlogWebFluxAutoConfiguration` (`@ConditionalOnWebApplication(REACTIVE)`) registra `StdlogWebFilter`, que emite el mismo `CONTROLLER_HTTP IN/OUT` y el evento extra de error (`WARN`/`ERROR` por status final), resuelve `operation`/`route` desde los atributos del `HandlerMapping` tras la cadena, aplica `excluded-path-patterns`, captura bodies con decoradores reactivos acotados por `maxRequestBodyBytes`/`maxResponseBodyBytes`, y escribe `request_id`/exclusion en el Reactor Context. Reutiliza `stdlog.controller.*` y `stdlog.error.*`; se apaga con `stdlog.controller.webflux.enabled=false`. En pipelines 100% reactivos la excepcion real del evento de error es best-effort (se captura via `doOnError`); si un `WebExceptionHandler` la convirtio antes, el evento sale con el status y un mensaje sintetico (mejora en Fase 3).
 
 ### Exclusion de Logs
 
@@ -251,7 +256,8 @@ Los payloads custom pasan por `StdlogEmitter`, quedan bajo la clave `stdlog` y s
 ## Decisiones Tecnicas Actuales
 
 - `main` apunta a Spring Boot 4.1.0, bytecode Java 17, build en JDK 17-25. La linea Spring Boot 3 vive en `spring-boot-3.x` (ver "Modelo de Ramas" y `ADR-0005`).
-- La entrada HTTP del starter es servlet/MVC hoy; `ADR-0008` decidio ampliarla a WebFlux (entrada reactiva) por fases, en `appbrain.stdlog.webflux` con `@ConditionalOnWebApplication(REACTIVE)`, sin tocar la via servlet. Los clientes salientes cubren stacks bloqueantes y reactivos (`WebClient`, R2DBC).
+- La entrada HTTP del starter cubre servlet/MVC y, desde `ADR-0008` Fase 1, WebFlux (`StdlogWebFilter`, `@ConditionalOnWebApplication(REACTIVE)`, sin tocar la via servlet). Los dos stacks son mutuamente excluyentes en runtime. Los clientes salientes cubren stacks bloqueantes y reactivos (`WebClient`, R2DBC).
+- `ADR-0008` estado de fases: **Fase 1 hecha** (`StdlogWebFilter`: `CONTROLLER_HTTP` + evento de error + `request_id`/`operation`/`route`/exclusion en el Reactor Context; captura de body reactiva). Pendientes: Fase 2 (correlacion downstream: `WebClient`/R2DBC leen el `ContextView`, abrir `StdlogWebClientAutoConfiguration` a `REACTIVE`) y Fase 3 (`@StdlogExcluded` reactivo, `StdlogCustom` reactivo, evento de error de mayor fidelidad).
 - Logback/logstash encoder (v9.0) es el mecanismo de salida JSON provisto.
 - `stdlog.mode=AUTO` cae a no productivo cuando `STDLOG_MODE` no esta definido.
 - `RestTemplate` se envuelve con `BufferingClientHttpRequestFactory` para poder leer bodies.
@@ -297,7 +303,7 @@ Suite ejecutada en `main` (`mvn test`): 177 tests, 0 fallos, `BUILD SUCCESS`, ve
 - Definir si se publica a un repositorio remoto (Maven Central / JitPack) ademas del flujo local `release/`. El esquema de version por linea (`4.x.y` / `3.x.y`) ya esta decidido en `ADR-0005`.
 - Definir si el reemplazo `@Primary DataSource` / `@Primary ConnectionFactory` es el contrato definitivo o si debe existir una alternativa menos invasiva.
 - Definir politica formal de soporte para multiples datasources / connection factories.
-- Ejecutar las fases de `ADR-0008` (soporte WebFlux): Fase 1 `StdlogWebFilter` (`CONTROLLER_HTTP` + evento de error + `request_id`/`operation`/exclusion en Reactor Context); Fase 2 correlacion downstream (`WebClient`/R2DBC leen el Context, abrir la auto-config WebClient a `REACTIVE`); Fase 3 `@StdlogExcluded` reactivo, `StdlogCustom` reactivo, evento de error de mayor fidelidad.
+- Ejecutar las fases restantes de `ADR-0008` (soporte WebFlux): Fase 2 correlacion downstream (`WebClient`/R2DBC leen el `ContextView`, abrir `StdlogWebClientAutoConfiguration` a `REACTIVE`, `ThreadLocalAccessor` de Micrometer); Fase 3 `@StdlogExcluded` reactivo, `StdlogCustom` reactivo, evento de error de mayor fidelidad (`WebExceptionHandler`). Fase 1 ya esta hecha.
 - Definir criterios de seguridad por defecto para headers, bodies y parametros sensibles.
 - Definir si el ciclo `StdlogCustom`/`StdlogEmitter` debe aceptarse como patron de fachada estatica o refactorizarse.
 

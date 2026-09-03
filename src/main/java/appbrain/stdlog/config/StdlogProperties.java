@@ -185,6 +185,28 @@ public class StdlogProperties {
         public void setExcludedPathPatterns(List<String> excludedPathPatterns) {
             this.excludedPathPatterns = excludedPathPatterns == null ? new ArrayList<>() : excludedPathPatterns;
         }
+
+        public Webflux getWebflux() { return webflux; }
+
+        /** Configuración específica de la vía WebFlux (entrada HTTP reactiva). Ver ADR-0008. */
+        private final Webflux webflux = new Webflux();
+
+        /**
+         * Ajustes de la instrumentación de entrada WebFlux. Comparte el resto de la
+         * configuración de {@code stdlog.controller.*} (niveles, bodies, allowlists,
+         * {@code excluded-path-patterns}) y de {@code stdlog.error.*}.
+         */
+        public static class Webflux {
+
+            /**
+             * Si {@code false}, no se instrumenta la entrada HTTP reactiva (una app servlet
+             * no se ve afectada de todos modos). Default: {@code true}.
+             */
+            private boolean enabled = true;
+
+            public boolean isEnabled() { return enabled; }
+            public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        }
     }
 
     /**
