@@ -29,6 +29,53 @@ class StdlogEmitterTest {
     void tearDown() {
         if (appender != null) StdlogTestSupport.detach(appender);
         MDC.clear();
+        StdlogMasker.reset();
+    }
+
+    // ---- enmascaramiento en el punto de emisión (ADR-0010) ----
+
+    @Test
+    void shouldMaskSensitiveValuesOnTheWayOut() {
+        appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
+
+        StdlogEmitter.emit(STDLOG, StdlogLevel.INFO, new java.util.LinkedHashMap<>(Map.of(
+                "event", "CONTROLLER_HTTP",
+                "request", new java.util.LinkedHashMap<>(Map.of(
+                        "headers", new java.util.LinkedHashMap<>(Map.of("authorization", "Bearer abc")),
+                        "body", "{\"user\":\"ana\",\"password\":\"s3cr3t\"}")))));
+
+        Map<String, Object> p = StdlogTestSupport.stdlogPayload(appender.list.get(0));
+        Map<?, ?> req = (Map<?, ?>) p.get("request");
+        assertEquals("***", ((Map<?, ?>) req.get("headers")).get("authorization"));
+        assertEquals("{\"user\":\"ana\",\"password\":\"***\"}", req.get("body"));
+    }
+
+    /** Cubre las dos superficies a la vez: el mapa de params y el texto del statement. */
+    @Test
+    void shouldMaskDbParamsAndStatement() {
+        appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
+
+        StdlogEmitter.emit(STDLOG, StdlogLevel.INFO, new java.util.LinkedHashMap<>(Map.of(
+                "event", "CLIENT_DB",
+                "db", new java.util.LinkedHashMap<>(Map.of(
+                        "statement", "UPDATE u SET password='x' WHERE id=1",
+                        "params", new java.util.LinkedHashMap<>(Map.of("password", "s3cr3t", "id", 1)))))));
+
+        Map<?, ?> db = (Map<?, ?>) StdlogTestSupport.stdlogPayload(appender.list.get(0)).get("db");
+        assertEquals("***", ((Map<?, ?>) db.get("params")).get("password"));
+        assertEquals(1, ((Map<?, ?>) db.get("params")).get("id"));
+        assertEquals("UPDATE u SET password=*** WHERE id=1", db.get("statement"));
+    }
+
+    @Test
+    void shouldNotMaskWhenDisabled() {
+        appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
+        StdlogMasker.configure(false, StdlogMasker.DEFAULT_KEYS, "***");
+
+        StdlogEmitter.emit(STDLOG, StdlogLevel.INFO,
+                new java.util.LinkedHashMap<>(Map.of("event", "X", "password", "s3cr3t")));
+
+        assertEquals("s3cr3t", StdlogTestSupport.stdlogPayload(appender.list.get(0)).get("password"));
     }
 
     @ParameterizedTest

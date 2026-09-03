@@ -60,6 +60,7 @@ public class StdlogProperties {
     private final Restclient restclient = new Restclient();
     private final Jdbc jdbc = new Jdbc();
     private final Error error = new Error();
+    private final Masking masking = new Masking();
 
     public Mode getMode() { return mode; }
     public void setMode(Mode mode) { this.mode = mode; }
@@ -71,6 +72,56 @@ public class StdlogProperties {
     public Restclient getRestclient() { return restclient; }
     public Jdbc getJdbc() { return jdbc; }
     public Error getError() { return error; }
+    public Masking getMasking() { return masking; }
+
+    /**
+     * Enmascaramiento de valores sensibles (`ADR-0010`).
+     *
+     * <p>Se aplica en {@code StdlogEmitter}, el punto único por el que pasan todos los
+     * módulos, así que cubre bodies de controller, bodies de {@code CLIENT_HTTP},
+     * {@code queryParams}, {@code db.params} y headers de una sola vez.</p>
+     *
+     * <p>Los bodies siguen capturándose igual que antes: el enmascaramiento reduce el
+     * riesgo sin quitar funcionalidad.</p>
+     */
+    public static class Masking {
+
+        /** Si {@code false}, no se enmascara nada. Default: {@code true}. */
+        private boolean enabled = true;
+
+        /**
+         * Nombres de clave cuyo valor se sustituye. Si se define, <b>reemplaza</b> la lista
+         * incorporada; para ampliarla sin perderla, usar {@code additionalKeys}.
+         *
+         * <p>La comparación normaliza la clave (minúsculas, sin {@code _ - . espacio}) y exige
+         * igualdad exacta, no inclusión: {@code card_number} y {@code cardNumber} coinciden,
+         * pero {@code shipping} no activa la regla {@code pin}.</p>
+         *
+         * <p>Default: {@code appbrain.stdlog.core.StdlogMasker.DEFAULT_KEYS} — password, secret,
+         * token, authorization, apiKey, cvv, cardNumber, cookie, pin, otp, ssn y variantes.</p>
+         */
+        private List<String> keys = new ArrayList<>();
+
+        /** Claves que se añaden a la lista incorporada, sin reemplazarla. Default: vacía. */
+        private List<String> additionalKeys = new ArrayList<>();
+
+        /** Valor sustituto que aparece en el log. Default: {@code ***}. */
+        private String placeholder = "***";
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+        public List<String> getKeys() { return keys; }
+        public void setKeys(List<String> keys) { this.keys = keys == null ? new ArrayList<>() : keys; }
+
+        public List<String> getAdditionalKeys() { return additionalKeys; }
+        public void setAdditionalKeys(List<String> additionalKeys) {
+            this.additionalKeys = additionalKeys == null ? new ArrayList<>() : additionalKeys;
+        }
+
+        public String getPlaceholder() { return placeholder; }
+        public void setPlaceholder(String placeholder) { this.placeholder = placeholder; }
+    }
 
     /**
      * Configuración del módulo de logging de requests/responses HTTP entrantes

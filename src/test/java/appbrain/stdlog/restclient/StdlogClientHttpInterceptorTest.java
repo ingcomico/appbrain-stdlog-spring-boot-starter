@@ -288,13 +288,20 @@ class StdlogClientHttpInterceptorTest {
         StdlogClientHttpInterceptor interceptor = new StdlogClientHttpInterceptor(props);
         MockClientHttpRequest request = get("https://api.example.com/ok");
         request.getHeaders().add("authorization", "Bearer secret");
+        request.getHeaders().add("x-routing", "MCO");
 
         interceptor.intercept(request, new byte[0], (req, body) -> new MockClientHttpResponse(new byte[0], 200));
 
         Map<String, Object> payload = onlyPayload();
         Map<?, ?> reqNode = (Map<?, ?>) payload.get("request");
         Map<?, ?> headers = (Map<?, ?>) reqNode.get("headers");
-        assertEquals("Bearer secret", headers.get("authorization"));
+
+        // logAllRequestHeaders incluye todas las cabeceras...
+        assertTrue(headers.containsKey("authorization"));
+        assertEquals("MCO", headers.get("x-routing"));
+        // ...pero desde ADR-0010 el valor de las sensibles va enmascarado. Antes de ese ADR
+        // esta misma aserción esperaba "Bearer secret" en claro: era el hallazgo F-04.
+        assertEquals("***", headers.get("authorization"));
     }
 
     @Test
