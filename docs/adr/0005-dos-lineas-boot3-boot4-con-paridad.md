@@ -70,7 +70,10 @@ Reglas derivadas:
   - un cambio no se considera "cerrado" hasta estar en las dos ramas cuando aplica a ambas.
 - **Cambios específicos de una línea** (p. ej. un bump de Spring Boot 4.x, o un fix que sólo afecta a Jackson 3) no se portan; se documenta el porqué en el commit.
 - **Toolchain común:** ambas ramas compilan con `<release>17>` (bytecode Java 17) y build en JDK 17–25.
-- **Publicación:** dos artefactos/coordenadas, uno por línea (la política de versionado/coordenadas queda pendiente, ver `AI_CONTEXT.md` "Decisiones Pendientes").
+- **Versionado:** el `major` del artefacto sigue al `major` de Spring Boot que soporta la línea:
+  - `spring-boot-3.x` publica `3.x.y` (arranca en `3.0.0`);
+  - `main` publica `4.x.y` (arranca en `4.0.0`).
+  Mismo `groupId:artifactId` (`appbrain:appbrain-stdlog-spring-boot-starter`); el consumidor elige la línea por el `major`. `minor`/`patch` evolucionan de forma independiente en cada rama.
 - Este flujo se rige además por `ADR-0004` (la documentación de cada cambio viaja en su PR, en las dos ramas).
 
 ## Consecuencias
@@ -97,7 +100,7 @@ Reglas derivadas:
 - **Contratos públicos:** se garantiza que son idénticos entre líneas.
 - **Dependencias:** `spring-boot-3.x` fija Spring Boot 3.5.x, Jackson 2, `logstash-logback-encoder` 8.x; `main` fija Spring Boot 4.x, Jackson 3, encoder 9.x.
 - **Compatibilidad:** un consumidor elige la línea según su propia versión de Spring Boot.
-- **Despliegue:** dos publicaciones.
+- **Despliegue:** dos publicaciones, con esquema de versión `4.x.y` (`main`) y `3.x.y` (`spring-boot-3.x`).
 - **Proceso:** `AI_CONTEXT.md` incorpora la sección "Modelo de Ramas"; `docs/spring-boot-4-migration-plan/tasks/T11` queda subsumido por este ADR.
 
 ## Validación

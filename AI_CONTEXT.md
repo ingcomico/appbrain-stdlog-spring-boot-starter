@@ -49,15 +49,15 @@ Existen dos ramas permanentes con paridad funcional (ver `ADR-0005`). Este archi
 
 | Rama | Spring Boot | Jackson | logstash-encoder | Estado |
 |---|---|---|---|---|
-| `main` | 4.1.0 | 3 (`tools.jackson.core`) | 9.0 | desarrollo activo, referencia de diseño |
-| `spring-boot-3.x` | 3.5.16 | 2 (`com.fasterxml.jackson.core`) | 8.1 | soporte para consumidores Boot 3 |
+| `main` | 4.1.0 | 3 (`tools.jackson.core`) | 9.0 | desarrollo activo, referencia de diseño; artefacto `4.x.y` |
+| `spring-boot-3.x` | 3.5.16 | 2 (`com.fasterxml.jackson.core`) | 8.1 | soporte para consumidores Boot 3; artefacto `3.x.y` |
 
 Ambas ofrecen las mismas capacidades, la misma configuracion `stdlog.*`, el mismo JSON de salida y el mismo comportamiento observable. Difieren solo en la version de Spring Boot, el binding Jackson, la version del encoder y las lineas `import` / recursos `META-INF` / `logback-spring-stdlog.xml` que eso implica. Toda feature o fix transversal entra por `main` y se porta a `spring-boot-3.x` inmediatamente tras el merge. Las ramas de trabajo se borran al mergear.
 
 ## Plataforma y Dependencias
 
 - Artefacto Maven: `appbrain:appbrain-stdlog-spring-boot-starter`.
-- Version declarada en `pom.xml`: `1.0.0`.
+- Version declarada en `pom.xml`: `4.0.0` (el major sigue al major de Spring Boot; `spring-boot-3.x` publica `3.x.y`). Ver `ADR-0005`.
 - Java: bytecode `release` 17; la build corre en JDK 17 a 25.
 - BOM: Spring Boot `4.1.0`.
 - Toolchain de build: `maven-compiler-plugin` 3.14.0 (`<release>17>`), `maven-surefire-plugin` 3.5.4, `jacoco-maven-plugin` 0.8.15.
@@ -72,7 +72,7 @@ Ambas ofrecen las mismas capacidades, la misma configuracion `stdlog.*`, el mism
   - `slf4j-api`.
 - Publicacion configurada en `distributionManagement` hacia `file://${maven.multiModuleProjectDirectory}/release`.
 
-Hay una inconsistencia documental vigente: `README.md` usa las coordenadas `appbrain:appbrain-stdlog-spring-boot-starter:1.0.0-local` (version de publicacion local de prueba en `release/`), mientras `pom.xml` declara `1.0.0`. Es intencional para el flujo de `mvn clean deploy` local descrito en el README, pero sigue siendo una discrepancia de version entre ambos archivos que un consumidor puede malinterpretar.
+`README.md` documenta las coordenadas con sufijo `-local` (`...:4.0.0-local`) para el flujo de `mvn clean deploy` a `release/`; `pom.xml` declara `4.0.0`. El sufijo `-local` es intencional para ese flujo de prueba local.
 
 ## Arquitectura
 
@@ -275,7 +275,7 @@ Suite ejecutada en `main` (`mvn test`): 177 tests, 0 fallos, `BUILD SUCCESS`, ve
 
 ## Decisiones Pendientes
 
-- Resolver la version publica de los artefactos: `pom.xml` declara `1.0.0` en ambas ramas y `README.md` documenta `1.0.0-local`; falta ademas definir coordenadas distintas por linea (`main` Boot 4 vs `spring-boot-3.x` Boot 3), ver `ADR-0005`.
+- Definir si se publica a un repositorio remoto (Maven Central / JitPack) ademas del flujo local `release/`. El esquema de version por linea (`4.x.y` / `3.x.y`) ya esta decidido en `ADR-0005`.
 - Definir si el reemplazo `@Primary DataSource` es el contrato definitivo para JDBC o si debe existir una alternativa menos invasiva.
 - Definir politica formal de soporte para multiples datasources.
 - Definir si se soportara WebFlux/WebClient o si el alcance queda explicitamente limitado a servlet/MVC, `RestTemplate` y `RestClient`.
@@ -409,4 +409,4 @@ Si existe contradiccion entre estas fuentes, reportarla antes de modificar el si
 - Politica de exclusion: suprimir solo `TRACE/DEBUG/INFO` y nunca `WARN/ERROR`.
 - Contrato de instrumentacion HTTP saliente para `RestTemplate`/`RestClient`, incluyendo buffering en `RestTemplate`.
 - Politica de seguridad para bodies, headers y parametros SQL.
-- Politica de versionado/publicacion del artefacto durante la migracion Spring Boot 4 (`1.0.0` en `pom.xml` vs `1.0.0-local` en README).
+- Publicacion a un repositorio remoto (Maven Central / JitPack) ademas del flujo local `release/`.

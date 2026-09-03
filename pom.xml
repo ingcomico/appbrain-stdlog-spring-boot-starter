@@ -6,7 +6,9 @@
 
     <groupId>appbrain</groupId>
     <artifactId>appbrain-stdlog-spring-boot-starter</artifactId>
-    <version>1.0.0</version>
+    <!-- El major del artefacto sigue al major de Spring Boot que soporta esta linea:
+         4.x.y en `main` (Boot 4), 3.x.y en `spring-boot-3.x` (Boot 3). Ver ADR-0005. -->
+    <version>4.0.0</version>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
