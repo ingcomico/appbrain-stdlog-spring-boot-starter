@@ -1,5 +1,6 @@
 package appbrain.stdlog.webflux;
 
+import appbrain.stdlog.StdlogExcluded;
 import appbrain.stdlog.config.StdlogLevel;
 import appbrain.stdlog.config.StdlogProperties;
 import appbrain.stdlog.core.StdlogEmitter;
@@ -7,6 +8,7 @@ import appbrain.stdlog.core.StdlogReactorContext;
 import appbrain.stdlog.core.StdlogTraceCorrelation;
 import appbrain.stdlog.error.AppTraceUtil;
 import appbrain.stdlog.web.HttpLogExtractors;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,7 +62,9 @@ public class StdlogWebFilter implements WebFilter, Ordered {
 
     private static final Logger STDLOG = LoggerFactory.getLogger("stdlog");
     private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
-    private static final String ATTR_ERROR = "appbrain.stdlog.error";
+
+    /** Atributo del exchange donde se guarda la excepción (por {@code doOnError} o por {@code StdlogWebExceptionHandler}). */
+    static final String ATTR_ERROR = "appbrain.stdlog.error";
 
     private final StdlogProperties props;
 
@@ -134,6 +138,10 @@ public class StdlogWebFilter implements WebFilter, Ordered {
         String route = resolveRoute(exchange);
         int status = resolveStatus(exchange, error);
         long elapsedMs = (System.nanoTime() - startNano) / 1_000_000;
+        // Exclusión por @StdlogExcluded en el handler (además de la de path, ya evaluada).
+        // Sólo afecta a los eventos CONTROLLER_HTTP / error; los CLIENT_* aguas abajo ya se
+        // emitieron. La exclusión por path sí se propaga (viaja en el Context).
+        boolean excludedNow = excluded || hasStdlogExcluded(exchange);
 
         Map<String, String> previous = MDC.getCopyOfContextMap();
         try {
@@ -141,7 +149,7 @@ public class StdlogWebFilter implements WebFilter, Ordered {
             if (operation != null) MDC.put("operation", operation);
             if (traceIds != null && traceIds.traceId() != null) MDC.put("traceId", traceIds.traceId());
             if (traceIds != null && traceIds.spanId() != null) MDC.put("spanId", traceIds.spanId());
-            if (excluded) MDC.put(StdlogEmitter.MDC_EXCLUDED, "true");
+            if (excludedNow) MDC.put(StdlogEmitter.MDC_EXCLUDED, "true");
 
             emitIn(exchange, cc, requestId, operation, route, reqBuf);
             emitOut(cc, requestId, operation, route, status, elapsedMs, resBuf);
@@ -281,6 +289,13 @@ public class StdlogWebFilter implements WebFilter, Ordered {
             return hm.getBeanType().getSimpleName() + "#" + hm.getMethod().getName();
         }
         return null;
+    }
+
+    private static boolean hasStdlogExcluded(ServerWebExchange exchange) {
+        Object handler = exchange.getAttribute(HandlerMapping.BEST_MATCHING_HANDLER_ATTRIBUTE);
+        if (!(handler instanceof HandlerMethod hm)) return false;
+        return AnnotatedElementUtils.hasAnnotation(hm.getMethod(), StdlogExcluded.class)
+                || AnnotatedElementUtils.hasAnnotation(hm.getBeanType(), StdlogExcluded.class);
     }
 
     private static String resolveRoute(ServerWebExchange exchange) {
