@@ -8,7 +8,7 @@ Aceptado
 > hace **por fases** (ver "Plan de fases"); cada fase es una PR revisable y puede refinar
 > detalles de diseño.
 >
-> **Estado de fases:** Fase 1 **hecha** (`StdlogWebFilter`). Fase 2 **hecha en parte** (WebClient lee el Reactor Context; `StdlogWebClientAutoConfiguration` abierta a cualquier tipo de app). Pendiente en Fase 2: correlación de R2DBC en apps WebFlux (bloqueada por r2dbc-proxy, ver abajo). Fase 3 pendiente.
+> **Estado de fases:** Fase 1 **hecha**. Fase 2 **hecha** (WebClient lee el Reactor Context y resuelve `operation` desde el `ServerWebExchange` del Context; `StdlogWebClientAutoConfiguration` abierta a cualquier tipo de app; `StdlogReactorContextPropagationAutoConfiguration` registra un `ThreadLocalAccessor` de `request_id` para R2DBC — activo si el consumidor habilita `Hooks.enableAutomaticContextPropagation()`). Fase 3 pendiente.
 
 ## Contexto
 
@@ -87,13 +87,13 @@ Cada fase es una PR independiente a `main`, portada a `spring-boot-3.x`. La suit
 - Config: reutiliza `stdlog.controller.*` / `stdlog.error.*` + `stdlog.controller.webflux.enabled` (default `true`).
 - `StdlogWebFluxAutoConfiguration` registrada en `AutoConfiguration.imports`; el paquete servlet no se toca.
 
-**Fase 2 — Correlación downstream** (parcialmente hecha):
+**Fase 2 — Correlación downstream** (hecha):
 
-- **HECHO** — `StdlogWebClientExchangeFilter` envuelve su lógica en `Mono.deferContextual` y lee `request_id`/`operation`/exclusión del `ContextView` de Reactor cuando el MDC está vacío. En una app WebFlux, la llamada `WebClient` hereda el `Context` que puebla `StdlogWebFilter` (misma cadena reactiva), así que **no hace falta context-propagation** para correlacionar `CLIENT_HTTP` con el request. MDC-first: la vía servlet no cambia.
-- **HECHO** — `StdlogWebClientAutoConfiguration` deja de estar gated a `SERVLET`; se activa con sólo `@ConditionalOnClass(WebClient)` (servlet, WebFlux o no-web).
-- **HECHO** — `StdlogReactorContext` movido a `appbrain.stdlog.core` (compartido por el `WebFilter` que escribe y los clientes que leen).
-- **PENDIENTE** — Correlación de **R2DBC** en apps WebFlux: `r2dbc-proxy` 1.1.x **no expone el `ContextView`** a sus `ProxyExecutionListener` (sólo `ValueStore` por query/conexión). El listener sigue leyendo del MDC en `beforeQuery`; en una app WebFlux eso requiere que el consumidor propague el MDC (Micrometer context-propagation con un accessor de MDC + `Hooks.enableAutomaticContextPropagation()`). Opciones a evaluar: (a) el starter provee y registra un `ThreadLocalAccessor` para `request_id` (el consumidor sólo activa el hook); (b) esperar soporte de Context en r2dbc-proxy; (c) documentarlo como límite. Se decide en una PR aparte.
-- **PENDIENTE** — Propagación de `operation`/`route` a los clientes salientes en WebFlux (se resuelven tarde en el `WebFilter`; hoy sólo `request_id` viaja por el Context).
+- `StdlogWebClientExchangeFilter` envuelve su lógica en `Mono.deferContextual` y lee `request_id`/`operation`/exclusión del `ContextView` de Reactor cuando el MDC está vacío. En una app WebFlux, la llamada `WebClient` hereda el `Context` que puebla `StdlogWebFilter` (misma cadena reactiva), así que **no hace falta context-propagation** para correlacionar `CLIENT_HTTP` con el request. MDC-first: la vía servlet no cambia.
+- `operation` en `CLIENT_HTTP` (WebFlux): `StdlogWebFilter` pone el `ServerWebExchange` en el Context (clave `ServerWebExchangeContextFilter.EXCHANGE_CONTEXT_ATTRIBUTE`); el filtro de `WebClient` lo lee de forma perezosa y resuelve `operation` desde `HandlerMapping.BEST_MATCHING_HANDLER_ATTRIBUTE` (ya poblado cuando el controller hace la llamada). `route` sigue sin propagarse (menos util downstream).
+- `StdlogWebClientAutoConfiguration` deja de estar gated a `SERVLET`; se activa con sólo `@ConditionalOnClass(WebClient)` (servlet, WebFlux o no-web).
+- `StdlogReactorContext` movido a `appbrain.stdlog.core` (compartido por el `WebFilter` que escribe y los clientes que leen).
+- **R2DBC** en apps WebFlux: `r2dbc-proxy` 1.1.x **no expone el `ContextView`** a sus listeners (sólo `ValueStore`). `StdlogR2dbcQueryListener` sigue leyendo del MDC en `beforeQuery` (sin cambios). `StdlogReactorContextPropagationAutoConfiguration` (`@ConditionalOnClass(io.micrometer.context.ContextRegistry)` + `REACTIVE`) registra un `ThreadLocalAccessor` para `request_id`: cuando el consumidor habilita `Hooks.enableAutomaticContextPropagation()`, ese valor viaja Context↔MDC en los hilos del event-loop y llega al evento `CLIENT_DB`. El starter **no** activa el hook (es global de la app). Dependencia `io.micrometer:context-propagation` `provided`.
 
 **Fase 3 — Refinamientos**:
 
@@ -141,7 +141,7 @@ Antes de cerrar cada fase:
 
 **Fase 1**: `StdlogWebFilterTest` (7 tests, `WebTestClient.bindToController` + `.webFilter(...)`): `webflux.enabled=false`, `CONTROLLER_HTTP IN/OUT` de un GET (method/fullPath/operation/route/request_id/queryParams), reutilización del header `x-request-id`, captura de body request+response, evento `ERROR` en un controller que tira (excepción + throwable), evento `WARN` en 404, supresión de INFO en path excluido. `StdlogWebFluxAutoConfigurationTest` (4 tests). Código servlet sin cambios.
 
-**Fase 2 (parcial)**: `StdlogWebClientExchangeFilterTest` — nuevos: `request_id`/`operation` tomados del Reactor Context cuando el MDC está vacío; MDC gana sobre el Context si ambos están. `StdlogWebClientAutoConfigurationTest` — la auto-config se activa también fuera de apps servlet. Suite completa: **218 tests, 0 fallos** en JDK 17 y JDK 25.
+**Fase 2**: `StdlogWebClientExchangeFilterTest` — `request_id`/`operation` del Reactor Context cuando el MDC está vacío; MDC gana sobre el Context; `operation` resuelto desde el `ServerWebExchange` del Context. `StdlogWebClientAutoConfigurationTest` — activa también fuera de apps servlet. `StdlogReactorContextPropagationAutoConfigurationTest` (3 tests) — el `ThreadLocalAccessor` de `request_id` se registra en apps reactivas y escribe/lee el MDC. Suite completa: **222 tests, 0 fallos** en JDK 17 y JDK 25.
 
 ## Relación con Otros ADR
 

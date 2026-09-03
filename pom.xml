@@ -71,9 +71,9 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- Solo para el logging de WebClient (cliente saliente reactivo). Ver ADR-0006.
-             El modulo se activa con @ConditionalOnClass(WebClient), asi que sin estas
-             dependencias en el consumidor no tiene ningun efecto. -->
+        <!-- Solo para el logging de WebClient (ADR-0006) y la entrada WebFlux (ADR-0008).
+             Los modulos reactivos son @ConditionalOnClass, asi que sin estas dependencias
+             en el consumidor no tienen ningun efecto. -->
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-webflux</artifactId>
@@ -82,6 +82,12 @@
         <dependency>
             <groupId>io.projectreactor</groupId>
             <artifactId>reactor-core</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <!-- ThreadLocalAccessor de request_id para R2DBC en apps WebFlux (ADR-0008 Fase 2). -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>context-propagation</artifactId>
             <scope>provided</scope>
         </dependency>
 

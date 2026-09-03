@@ -78,7 +78,8 @@ public class StdlogWebClientExchangeFilter implements ExchangeFilterFunction {
         String requestId = firstNonBlank(value(mdc, "request_id"),
                 StdlogReactorContext.get(ctxView, StdlogReactorContext.REQUEST_ID));
         String operation = firstNonBlank(value(mdc, "operation"),
-                StdlogReactorContext.get(ctxView, StdlogReactorContext.OPERATION));
+                firstNonBlank(StdlogReactorContext.get(ctxView, StdlogReactorContext.OPERATION),
+                        operationFromExchange(ctxView)));
         boolean excluded = mdc != null && mdc.containsKey(StdlogEmitter.MDC_EXCLUDED)
                 || StdlogReactorContext.isExcluded(ctxView);
 
@@ -240,6 +241,27 @@ public class StdlogWebClientExchangeFilter implements ExchangeFilterFunction {
 
     private static String value(Map<String, String> mdc, String key) {
         return mdc == null ? null : mdc.get(key);
+    }
+
+    /**
+     * En una app WebFlux, el {@code ServerWebExchange} está en el Reactor Context (lo pone
+     * {@code StdlogWebFilter}). Sus atributos {@code HandlerMapping.*} ya están poblados cuando
+     * el controller hace la llamada saliente, así que se puede resolver {@code operation}
+     * de forma perezosa aquí. Devuelve {@code null} fuera de WebFlux o si no hay handler.
+     */
+    private static String operationFromExchange(ContextView ctxView) {
+        try {
+            return org.springframework.web.filter.reactive.ServerWebExchangeContextFilter.getExchange(ctxView)
+                    .map(ex -> ex.getAttribute(org.springframework.web.reactive.HandlerMapping.BEST_MATCHING_HANDLER_ATTRIBUTE))
+                    .filter(h -> h instanceof org.springframework.web.method.HandlerMethod)
+                    .map(h -> {
+                        org.springframework.web.method.HandlerMethod hm = (org.springframework.web.method.HandlerMethod) h;
+                        return hm.getBeanType().getSimpleName() + "#" + hm.getMethod().getName();
+                    })
+                    .orElse(null);
+        } catch (RuntimeException | LinkageError ignored) {
+            return null;
+        }
     }
 
     private static String firstNonBlank(String a, String b) {

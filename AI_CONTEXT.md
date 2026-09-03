@@ -70,6 +70,7 @@ Ambas ofrecen las mismas capacidades, la misma configuracion `stdlog.*`, el mism
   - `spring-webmvc` con scope `provided`;
   - `spring-webflux` y `io.projectreactor:reactor-core` con scope `provided` (logging de `WebClient` `ADR-0006` y entrada WebFlux `ADR-0008`);
   - `io.r2dbc:r2dbc-proxy` y `io.r2dbc:r2dbc-spi` con scope `provided` (solo para el logging de R2DBC, ver `ADR-0007`);
+  - `io.micrometer:context-propagation` con scope `provided` (`ThreadLocalAccessor` de `request_id` para R2DBC en apps WebFlux, `ADR-0008` Fase 2);
   - `jakarta.servlet-api` con scope `provided`;
   - `tools.jackson.core:jackson-databind` (Jackson 3);
   - `net.ttddyy:datasource-proxy:1.9`;
@@ -129,7 +130,7 @@ El codigo principal esta bajo `src/main/java/appbrain/stdlog`.
 
 ### Recursos Publicos
 
-- `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` registra ocho autoconfiguraciones (`StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration`, `StdlogWebFluxAutoConfiguration`, `StdlogRestClientAutoConfiguration`, `StdlogWebClientAutoConfiguration`, `StdlogJdbcAutoConfiguration`, `StdlogR2dbcAutoConfiguration`, `StdlogErrorAutoConfiguration`). `StdlogWebFluxAutoConfiguration` es `@ConditionalOnWebApplication(REACTIVE)` y no co-activa con las servlet.
+- `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` registra nueve autoconfiguraciones (`StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration`, `StdlogWebFluxAutoConfiguration`, `StdlogReactorContextPropagationAutoConfiguration`, `StdlogRestClientAutoConfiguration`, `StdlogWebClientAutoConfiguration`, `StdlogJdbcAutoConfiguration`, `StdlogR2dbcAutoConfiguration`, `StdlogErrorAutoConfiguration`). `StdlogWebFluxAutoConfiguration` y `StdlogReactorContextPropagationAutoConfiguration` son `@ConditionalOnWebApplication(REACTIVE)` y no co-activan con las servlet.
 - `META-INF/spring.factories` registra `StdlogVersionEnvironmentPostProcessor` como `EnvironmentPostProcessor`.
 - Existe ademas el archivo `META-INF/spring/org.springframework.boot.EnvironmentPostProcessor` (sin sufijo `.imports`), pero Spring Boot 4 no lo lee por ningun mecanismo: es un archivo inerte heredado y debe eliminarse (ver ADR-0001, Riesgos).
 - `stdlog/logback-spring-stdlog.xml` define un appender JSON de consola, logger `stdlog`, root logger y campo `stdlog_lib_version`.
@@ -259,7 +260,7 @@ Los payloads custom pasan por `StdlogEmitter`, quedan bajo la clave `stdlog` y s
 - La entrada HTTP del starter cubre servlet/MVC y, desde `ADR-0008` Fase 1, WebFlux (`StdlogWebFilter`, `@ConditionalOnWebApplication(REACTIVE)`, sin tocar la via servlet). Los dos stacks son mutuamente excluyentes en runtime. Los clientes salientes cubren stacks bloqueantes y reactivos (`WebClient`, R2DBC).
 - `ADR-0008` estado de fases:
   - **Fase 1 hecha**: `StdlogWebFilter` (`CONTROLLER_HTTP` + evento de error + `request_id`/exclusion en el Reactor Context; captura de body reactiva).
-  - **Fase 2 parcial**: `StdlogWebClientExchangeFilter` lee el Reactor Context (correlacion de `CLIENT_HTTP` en apps WebFlux, sin necesidad de context-propagation); `StdlogWebClientAutoConfiguration` ya no esta gated a `SERVLET`; `StdlogReactorContext` movido a `core`. **Pendiente**: correlacion de R2DBC en WebFlux (r2dbc-proxy 1.1.x no expone `ContextView`; requiere Micrometer context-propagation del consumidor o un `ThreadLocalAccessor` provisto por el starter) y propagacion de `operation`/`route` (hoy solo `request_id` viaja por el Context).
+  - **Fase 2 hecha**: `StdlogWebClientExchangeFilter` lee el Reactor Context (`CLIENT_HTTP` correlacionado en apps WebFlux sin necesidad de context-propagation) y resuelve `operation` desde el `ServerWebExchange` que `StdlogWebFilter` pone en el Context. `StdlogWebClientAutoConfiguration` ya no esta gated a `SERVLET`. `StdlogReactorContext` movido a `core`. `StdlogReactorContextPropagationAutoConfiguration` registra un `ThreadLocalAccessor` de `request_id` -> para R2DBC en WebFlux, el `request_id` llega al MDC (y por tanto a `CLIENT_DB`) si el consumidor activa `Hooks.enableAutomaticContextPropagation()`. El starter no activa el hook. `route` no se propaga (menos util downstream).
   - **Fase 3 pendiente**: `@StdlogExcluded` reactivo, `StdlogCustom` reactivo, evento de error de mayor fidelidad (`WebExceptionHandler`).
 - Logback/logstash encoder (v9.0) es el mecanismo de salida JSON provisto.
 - `stdlog.mode=AUTO` cae a no productivo cuando `STDLOG_MODE` no esta definido.
@@ -286,7 +287,7 @@ Existen tests bajo `src/test/java` para:
 - resolver de caller;
 - post-procesador de version.
 
-Suite ejecutada en `main` (`mvn test`): 177 tests, 0 fallos, `BUILD SUCCESS`, verificado en JDK 17 y JDK 25.
+Suite ejecutada en `main` (`mvn test`): 222 tests, 0 fallos, `BUILD SUCCESS`, verificado en JDK 17 y JDK 25 (cuenta al cierre de `ADR-0008` Fase 2).
 
 ## Limitaciones Actuales
 
@@ -294,7 +295,7 @@ Suite ejecutada en `main` (`mvn test`): 177 tests, 0 fallos, `BUILD SUCCESS`, ve
 - El soporte de HTTP saliente cubre `RestTemplate`, `RestClient` y `WebClient` (este ultimo solo como cliente saliente en apps servlet, ver `ADR-0006`); no hay soporte para aplicaciones WebFlux completas.
 - `RestTemplate` queda con request factory buffering, con posible impacto de memoria en bodies grandes.
 - El proxy JDBC como `@Primary DataSource` (y el proxy R2DBC como `@Primary ConnectionFactory`) puede interactuar con configuraciones avanzadas del consumidor, multiples datasources/connection factories, pooling o wrapping previo.
-- En R2DBC, `db.response` (filas devueltas/afectadas) no se emite: en R2DBC el conteo es best-effort y asincrono. La correlacion en apps WebFlux depende de context-propagation del consumidor.
+- En R2DBC, `db.response` (filas devueltas/afectadas) no se emite: en R2DBC el conteo es best-effort y asincrono. En apps WebFlux, `request_id` en `CLIENT_DB` requiere que el consumidor active `Hooks.enableAutomaticContextPropagation()` (el starter provee el `ThreadLocalAccessor`); `operation` no llega a `CLIENT_DB` en WebFlux.
 - Las politicas de exclusion basadas en MDC se propagan solo dentro del mismo thread.
 - La captura de source en HTTP saliente usa stacktrace-walk y depende de `consumerBasePackage`; tiene costo de CPU por llamada cuando se habilita.
 - Bodies, headers y parametros SQL pueden contener datos sensibles; la configuracion segura depende del consumidor.
@@ -306,7 +307,7 @@ Suite ejecutada en `main` (`mvn test`): 177 tests, 0 fallos, `BUILD SUCCESS`, ve
 - Definir si se publica a un repositorio remoto (Maven Central / JitPack) ademas del flujo local `release/`. El esquema de version por linea (`4.x.y` / `3.x.y`) ya esta decidido en `ADR-0005`.
 - Definir si el reemplazo `@Primary DataSource` / `@Primary ConnectionFactory` es el contrato definitivo o si debe existir una alternativa menos invasiva.
 - Definir politica formal de soporte para multiples datasources / connection factories.
-- Completar `ADR-0008`: cerrar Fase 2 (correlacion de R2DBC en WebFlux: `ThreadLocalAccessor` de Micrometer o esperar Context en r2dbc-proxy; propagacion de `operation`/`route`) y Fase 3 (`@StdlogExcluded` reactivo, `StdlogCustom` reactivo, evento de error de mayor fidelidad). Fases 1 y 2-parcial ya estan hechas.
+- Completar `ADR-0008` Fase 3: `@StdlogExcluded` en handlers reactivos, `StdlogCustom` reactivo (lee el Context), evento de error de mayor fidelidad (`WebExceptionHandler` de alta precedencia para capturar la excepcion real). Fases 1 y 2 ya estan hechas.
 - Definir criterios de seguridad por defecto para headers, bodies y parametros sensibles.
 - Definir si el ciclo `StdlogCustom`/`StdlogEmitter` debe aceptarse como patron de fachada estatica o refactorizarse.
 
