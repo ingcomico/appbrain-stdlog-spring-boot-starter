@@ -8,16 +8,17 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.core.Ordered;
 import org.springframework.context.annotation.Bean;
 
 /**
  * Auto-configuración principal del starter: registra los filtros de logging HTTP.
  *
  * <p>Solo activa con aplicaciones servlet ({@code @ConditionalOnWebApplication(SERVLET)}).
- * Registra dos filtros con la mayor prioridad posible:</p>
+ * Registra dos filtros con órdenes distintos:</p>
  * <ul>
  *   <li>{@code RequestIdMdcFilter} — orden {@code Integer.MIN_VALUE} (primero de todos).</li>
- *   <li>{@code ControllerBodyAndOutLoggingFilter} — orden {@code Integer.MIN_VALUE + 1}.</li>
+ *   <li>{@code ControllerBodyAndOutLoggingFilter} — orden {@code LOWEST_PRECEDENCE}, dentro del scope de observabilidad.</li>
  * </ul>
  */
 @AutoConfiguration
@@ -40,7 +41,7 @@ public class StdlogAutoConfiguration {
 
         FilterRegistrationBean<ControllerBodyAndOutLoggingFilter> frb = new FilterRegistrationBean<>();
         frb.setFilter(new ControllerBodyAndOutLoggingFilter(props, objectMapper));
-        frb.setOrder(Integer.MIN_VALUE + 1);
+        frb.setOrder(Ordered.LOWEST_PRECEDENCE);
         return frb;
     }
 }

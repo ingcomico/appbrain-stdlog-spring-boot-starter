@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import appbrain.stdlog.config.StdlogLevel;
 import appbrain.stdlog.config.StdlogProperties;
 import appbrain.stdlog.core.StdlogEmitter;
+import appbrain.stdlog.core.StdlogTraceCorrelation;
 import appbrain.stdlog.error.AppTraceUtil;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -110,9 +111,11 @@ public class ControllerBodyAndOutLoggingFilter extends OncePerRequestFilter {
                 if (req.getAttribute(StdlogAttrs.START_NANO) == null) {
                     req.setAttribute(StdlogAttrs.START_NANO, System.nanoTime());
                 }
+                captureTraceCorrelation(req);
                 chain.doFilter(req, res);
             } finally {
                 try {
+                    captureTraceCorrelation(req);
                     logInNoBody(req);
                     logOutNoBody(req, res);
                     logErrorOrWarnEventIfPresent(req, res);
@@ -125,16 +128,19 @@ public class ControllerBodyAndOutLoggingFilter extends OncePerRequestFilter {
             return;
         }
 
-        ContentCachingRequestWrapper requestWrapper = new ContentCachingRequestWrapper(req);
+        ContentCachingRequestWrapper requestWrapper =
+                new ContentCachingRequestWrapper(req, props.getController().getMaxRequestBodyBytes());
         ContentCachingResponseWrapper responseWrapper = new ContentCachingResponseWrapper(res);
 
         try {
             if (requestWrapper.getAttribute(StdlogAttrs.START_NANO) == null) {
                 requestWrapper.setAttribute(StdlogAttrs.START_NANO, System.nanoTime());
             }
+            captureTraceCorrelation(requestWrapper);
             chain.doFilter(requestWrapper, responseWrapper);
         } finally {
             try {
+                captureTraceCorrelation(requestWrapper);
                 logIn(requestWrapper);
                 logOut(requestWrapper, responseWrapper);
                 logErrorOrWarnEventIfPresent(requestWrapper, responseWrapper);
@@ -360,7 +366,31 @@ public class ControllerBodyAndOutLoggingFilter extends OncePerRequestFilter {
             stdlog.put("request_id", requestId);
         }
 
+        Object traceId = req.getAttribute(StdlogAttrs.TRACE_ID);
+        if (traceId != null && !String.valueOf(traceId).isBlank()) {
+            stdlog.put(StdlogTraceCorrelation.STDLOG_TRACE_ID, traceId);
+        }
+
+        Object spanId = req.getAttribute(StdlogAttrs.SPAN_ID);
+        if (spanId != null && !String.valueOf(spanId).isBlank()) {
+            stdlog.put(StdlogTraceCorrelation.STDLOG_SPAN_ID, spanId);
+        }
+
         return stdlog;
+    }
+
+    private void captureTraceCorrelation(HttpServletRequest req) {
+        if (req.getAttribute(StdlogAttrs.TRACE_ID) != null && req.getAttribute(StdlogAttrs.SPAN_ID) != null) {
+            return;
+        }
+
+        StdlogTraceCorrelation.TraceIds traceIds = StdlogTraceCorrelation.current();
+        if (traceIds.traceId() != null && !traceIds.traceId().isBlank()) {
+            req.setAttribute(StdlogAttrs.TRACE_ID, traceIds.traceId());
+        }
+        if (traceIds.spanId() != null && !traceIds.spanId().isBlank()) {
+            req.setAttribute(StdlogAttrs.SPAN_ID, traceIds.spanId());
+        }
     }
 
     private long elapsedMs(HttpServletRequest req) {

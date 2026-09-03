@@ -25,5 +25,11 @@ public final class StdlogAttrs {
     /** Excepción capturada por {@code StdlogExceptionResolver}. Leída por {@code ControllerBodyAndOutLoggingFilter} para emitir el evento WARN/ERROR. */
     public static final String ERROR        = "stdlog.error";
 
+    /** Trace id OpenTelemetry/Micrometer capturado durante el request. */
+    public static final String TRACE_ID     = "stdlog.traceId";
+
+    /** Span id OpenTelemetry/Micrometer capturado durante el request. */
+    public static final String SPAN_ID      = "stdlog.spanId";
+
     private StdlogAttrs() {}
 }

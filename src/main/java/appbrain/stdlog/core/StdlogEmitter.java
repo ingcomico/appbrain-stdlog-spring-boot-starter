@@ -17,7 +17,9 @@ import java.util.Map;
  * para evitar serialización innecesaria.</p>
  *
  * <p>Todos los módulos (web, restclient, jdbc, custom) pasan por aquí
- * para garantizar un formato consistente.</p>
+ * para garantizar un formato consistente. Antes de emitir, agrega
+ * {@code trace_id}/{@code span_id} al payload cuando puede resolverlos desde
+ * MDC u OpenTelemetry.</p>
  *
  * <p><b>Exclusión de request/handler ({@code @StdlogExcluded} o
  * {@code excluded-path-patterns}):</b> cuando el MDC contiene la key
@@ -49,6 +51,8 @@ public final class StdlogEmitter {
     public static void emit(Logger logger, StdlogLevel level, Map<String, Object> stdlog) {
         if (logger == null || level == null || stdlog == null || isSuppressedByExclusion(level)) return;
 
+        stdlog = StdlogTraceCorrelation.enrich(stdlog);
+
         switch (level) {
             case TRACE -> { if (logger.isTraceEnabled()) logger.trace(append("stdlog", stdlog), "stdlog"); }
             case DEBUG -> { if (logger.isDebugEnabled()) logger.debug(append("stdlog", stdlog), "stdlog"); }
@@ -70,6 +74,8 @@ public final class StdlogEmitter {
      */
     public static void emit(Logger logger, StdlogLevel level, Map<String, Object> stdlog, Throwable t) {
         if (logger == null || level == null || stdlog == null || isSuppressedByExclusion(level)) return;
+
+        stdlog = StdlogTraceCorrelation.enrich(stdlog);
 
         switch (level) {
             case TRACE -> { if (logger.isTraceEnabled()) logger.trace(append("stdlog", stdlog), "stdlog", t); }
