@@ -4,9 +4,12 @@ Este archivo es la fuente canonica de contexto compartido para los agentes de IA
 
 ## Estado de Verificacion
 
-- Este contexto fue construido usando Codebase Memory MCP y el codigo actual.
+- Este contexto fue construido y verificado usando Codebase Memory MCP (`list_projects`, `index_status`, `get_architecture`, `check_index_coverage`) y lectura puntual del codigo actual.
+- El indice del proyecto estaba `ready` y sin archivos `parse_partial` ni `skipped`; solo se excluyen por diseno (`gitignore`) archivos `.DS_Store` y los directorios `.git`, `.idea`, `release`, `target`.
 - Antes de realizar analisis de impacto o cambios arquitectonicos, verificar la frescura del grafo mediante `check_index_coverage`.
+- El grafo es la primera fuente para descubrir estructura de codigo, pero archivos de recursos o documentacion pueden no estar rastreados con la misma frescura; si `check_index_coverage` reporta `not_tracked`, leer la fuente directamente antes de concluir.
 - Los directorios generados como `target`, `release`, `.git` e `.idea` no deben considerarse fuente estructural del proyecto.
+- El grafo reporta una `Route` `/api/orders`: es un fixture usado en tests del filtro de controller (`ControllerBodyAndOutLoggingFilterTest`, `ControllerBodyAndOutLoggingFilterBehaviorTest`), no un endpoint real del starter. No debe interpretarse como contrato publico.
 
 ## Flujo de Trabajo de los Agentes
 
@@ -14,7 +17,7 @@ Antes de realizar cambios arquitectonicos, estructurales o que afecten contratos
 
 1. Leer este archivo.
 2. Usar Codebase Memory para entender la estructura del codigo afectado y sus relaciones.
-3. Revisar los ADR relevantes dentro de `docs/adr/`, cuando existan.
+3. Revisar los ADR relevantes dentro de `docs/adr/`. ADRs vigentes: `0001` (migracion a Spring Boot 4 / Jackson 3), `0002` (correlacion de tracing MDC + OpenTelemetry por reflexion), `0003` (salida JSON via Logback + logstash-logback-encoder). Los tres estan en estado `Aceptado`; la suite de tests pasa (177 tests, 0 fallos, JDK 17).
 4. Determinar el impacto antes de modificar codigo.
 5. No duplicar decisiones arquitectonicas en archivos especificos de cada agente.
 6. Si existe una contradiccion entre este archivo, el codigo actual y otros documentos, reportarla antes de asumir cual es correcta.
@@ -46,13 +49,13 @@ Consumidores esperados: aplicaciones Spring Boot que quieran emitir logs estruct
   - `spring-boot-restclient`;
   - `spring-webmvc` con scope `provided`;
   - `jakarta.servlet-api` con scope `provided`;
-  - `tools.jackson.core:jackson-databind`;
+  - `tools.jackson.core:jackson-databind` (Jackson 3);
   - `net.ttddyy:datasource-proxy:1.9`;
   - `net.logstash.logback:logstash-logback-encoder:9.0`;
   - `slf4j-api`.
 - Publicacion configurada en `distributionManagement` hacia `file://${maven.multiModuleProjectDirectory}/release`.
 
-Hay una inconsistencia documental vigente: el `README.md` menciona coordenadas `1.0.0-local`, mientras `pom.xml` declara `1.0.0`.
+Hay una inconsistencia documental vigente: `README.md` usa las coordenadas `appbrain:appbrain-stdlog-spring-boot-starter:1.0.0-local` (version de publicacion local de prueba en `release/`), mientras `pom.xml` declara `1.0.0`. Es intencional para el flujo de `mvn clean deploy` local descrito en el README, pero sigue siendo una discrepancia de version entre ambos archivos que un consumidor puede malinterpretar.
 
 ## Arquitectura
 
@@ -97,9 +100,9 @@ El codigo principal esta bajo `src/main/java/appbrain/stdlog`.
 
 ### Recursos Publicos
 
-- `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` registra las cinco autoconfiguraciones.
-- `META-INF/spring.factories` registra `StdlogVersionEnvironmentPostProcessor`.
-- `META-INF/spring/org.springframework.boot.EnvironmentPostProcessor` registra tambien `StdlogVersionEnvironmentPostProcessor`.
+- `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` registra las cinco autoconfiguraciones (`StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration`, `StdlogRestClientAutoConfiguration`, `StdlogJdbcAutoConfiguration`, `StdlogErrorAutoConfiguration`).
+- `META-INF/spring.factories` registra `StdlogVersionEnvironmentPostProcessor` como `EnvironmentPostProcessor`.
+- Existe ademas el archivo `META-INF/spring/org.springframework.boot.EnvironmentPostProcessor` (sin sufijo `.imports`), pero Spring Boot 4 no lo lee por ningun mecanismo: es un archivo inerte heredado y debe eliminarse (ver ADR-0001, Riesgos).
 - `stdlog/logback-spring-stdlog.xml` define un appender JSON de consola, logger `stdlog`, root logger y campo `stdlog_lib_version`.
 - `stdlog-version.properties` alimenta la version de libreria expuesta como property `stdlog.libVersion`.
 
@@ -150,7 +153,7 @@ Registra:
 
 Para `RestTemplate`, el customizer agrega el interceptor si no existe y reemplaza el request factory por `BufferingClientHttpRequestFactory`.
 
-`StdlogClientHttpInterceptor` emite un unico evento por llamada saliente despues de la respuesta o excepcion. En modo productivo puede omitir exitos segun `stdlog.restclient.log-only-on-failure-in-prod`.
+`StdlogClientHttpInterceptor` emite un unico evento `CLIENT_HTTP direction=IN` por llamada saliente despues de recibir la respuesta o capturar la excepcion. Aunque representa una llamada HTTP saliente, la direccion vigente es `IN` porque el evento se registra al entrar la respuesta al cliente instrumentado. En modo productivo puede omitir exitos segun `stdlog.restclient.log-only-on-failure-in-prod`.
 
 ### JDBC
 
@@ -199,7 +202,7 @@ Los payloads custom pasan por `StdlogEmitter`, quedan bajo la clave `stdlog` y s
    - se limpia la marca de exclusion del MDC y se copia el body cacheado de respuesta.
 5. En llamadas HTTP salientes, el interceptor captura MDC, call id opcional, source opcional, ejecuta la llamada y emite `CLIENT_HTTP` si la politica lo permite.
 6. En queries JDBC, el datasource proxy llama a `StdlogClientDbQueryListener.afterQuery`, que emite `CLIENT_DB` si la politica lo permite.
-7. Todo evento emitido por la libreria pasa por `StdlogEmitter`, que agrega tracing desde MDC u OpenTelemetry y usa logger SLF4J `stdlog`.
+7. Todo evento emitido por la libreria pasa por `StdlogEmitter`, que agrega tracing desde MDC u OpenTelemetry (`StdlogTraceCorrelation`) y usa logger SLF4J `stdlog`.
 
 ## Principios Arquitectonicos Vigentes
 
@@ -213,15 +216,16 @@ Los payloads custom pasan por `StdlogEmitter`, quedan bajo la clave `stdlog` y s
 
 ## Decisiones Tecnicas Actuales
 
-- La linea actual apunta a Spring Boot 4.1.0 y Java 17.
+- La linea actual apunta a Spring Boot 4.1.0 y Java 17 (branch de trabajo `feature/spring-boot-4-migration`).
 - El starter esta orientado a aplicaciones servlet, no WebFlux.
-- Logback/logstash encoder es el mecanismo de salida JSON provisto.
+- Logback/logstash encoder (v9.0) es el mecanismo de salida JSON provisto.
 - `stdlog.mode=AUTO` cae a no productivo cuando `STDLOG_MODE` no esta definido.
 - `RestTemplate` se envuelve con `BufferingClientHttpRequestFactory` para poder leer bodies.
 - `RestClient` recibe el mismo `StdlogClientHttpInterceptor` mediante customizer.
 - JDBC se instrumenta reemplazando el `DataSource` del consumidor por un proxy `@Primary`.
 - `TRACE`, `DEBUG` e `INFO` pueden suprimirse por path/anotacion, pero `WARN` y `ERROR` no.
 - La version de libreria se expone via environment post processor y se agrega al JSON como `stdlog_lib_version`.
+- El binding JSON usa Jackson 3 (`tools.jackson.core:jackson-databind`) tras la migracion desde Jackson 2.
 
 ## Tests y Cobertura Funcional
 
@@ -238,7 +242,7 @@ Existen tests bajo `src/test/java` para:
 - resolver de caller;
 - post-procesador de version.
 
-No se ejecuto la suite durante esta actualizacion de contexto.
+Suite ejecutada el 2026-09-02 en la rama `feature/spring-boot-4-migration` (JDK 17, `mvn test`): 177 tests, 0 fallos, `BUILD SUCCESS`.
 
 ## Limitaciones Actuales
 
@@ -250,13 +254,12 @@ No se ejecuto la suite durante esta actualizacion de contexto.
 - La captura de source en HTTP saliente usa stacktrace-walk y depende de `consumerBasePackage`; tiene costo de CPU por llamada cuando se habilita.
 - Bodies, headers y parametros SQL pueden contener datos sensibles; la configuracion segura depende del consumidor.
 - Los directorios `release` y `target` no estan indexados ni deben tratarse como fuente estructural del codigo.
-- No hay ADRs vigentes que documenten formalmente las decisiones arquitectonicas ya implementadas.
+- Existen los ADR `0001`, `0002` y `0003` (estado `Aceptado`; suite de tests en verde). El resto de decisiones ya implementadas siguen sin ADR formal.
 
 ## Decisiones Pendientes
 
-- Resolver la version publica del artefacto: `pom.xml` declara `1.0.0`, mientras `README.md` documenta `1.0.0-local`.
-- Definir politica de mantenimiento/compatibilidad entre la linea Spring Boot 3 y la rama actual de migracion a Spring Boot 4.
-- Decidir si el doble registro de `StdlogVersionEnvironmentPostProcessor` en `spring.factories` y `META-INF/spring/org.springframework.boot.EnvironmentPostProcessor` es intencional para compatibilidad o debe simplificarse.
+- Resolver la version publica del artefacto: `pom.xml` declara `1.0.0`, mientras `README.md` documenta el flujo de publicacion local como `1.0.0-local`.
+- Eliminar el archivo inerte `META-INF/spring/org.springframework.boot.EnvironmentPostProcessor` (Spring Boot 4 no lo lee; el registro efectivo es `spring.factories`). Ver ADR-0001, Riesgos.
 - Definir si el reemplazo `@Primary DataSource` es el contrato definitivo para JDBC o si debe existir una alternativa menos invasiva.
 - Definir politica formal de soporte para multiples datasources.
 - Definir si se soportara WebFlux/WebClient o si el alcance queda explicitamente limitado a servlet/MVC, `RestTemplate` y `RestClient`.
@@ -361,7 +364,9 @@ No guardar aqui:
 
 ## Fuente de Verdad
 
-Prioridad:
+La prioridad se interpreta asi: el codigo actual y Codebase Memory describen el estado real de la implementacion; `AI_CONTEXT.md` es la guia canonica compartida para agentes sobre como entender y mantener ese estado. Si difieren, reportar la contradiccion antes de asumir.
+
+Prioridad operativa:
 
 1. Codigo actual y Codebase Memory para el estado real de implementacion.
 2. `AI_CONTEXT.md` para contexto compartido vigente.
@@ -372,12 +377,18 @@ Si existe contradiccion entre estas fuentes, reportarla antes de modificar el si
 
 ## Decisiones Arquitectonicas Candidatas a ADR
 
+### Ya promovidas a ADR
+
+- Migracion a Spring Boot 4.1.0 y Jackson 3, con Java 17 como `release` minimo -> **ADR-0001**.
+- Estrategia de correlacion de tracing: MDC primero y OpenTelemetry opcional por reflexion -> **ADR-0002**.
+- Estrategia de logging JSON basada en Logback/logstash encoder y archivo `logback-spring-stdlog.xml` provisto por el starter -> **ADR-0003**.
+
+### Pendientes
+
 - Alcance oficial del starter: servlet/MVC solamente vs soporte futuro WebFlux/WebClient.
 - Estrategia JDBC: reemplazo `@Primary DataSource` con `datasource-proxy` y politica para multiples datasources.
-- Estrategia de logging JSON basada en Logback/logstash encoder y archivo `logback-spring-stdlog.xml` provisto por el starter.
 - Politica de modo `AUTO` y default a `NON_PROD` cuando `STDLOG_MODE` no esta definido.
 - Politica de exclusion: suprimir solo `TRACE/DEBUG/INFO` y nunca `WARN/ERROR`.
 - Contrato de instrumentacion HTTP saliente para `RestTemplate`/`RestClient`, incluyendo buffering en `RestTemplate`.
-- Estrategia de correlacion: MDC primero y OpenTelemetry opcional por reflexion.
 - Politica de seguridad para bodies, headers y parametros SQL.
-- Politica de versionado/publicacion del artefacto durante la migracion Spring Boot 4.
+- Politica de versionado/publicacion del artefacto durante la migracion Spring Boot 4 (`1.0.0` en `pom.xml` vs `1.0.0-local` en README).
