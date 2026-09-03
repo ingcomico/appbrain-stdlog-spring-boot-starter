@@ -40,7 +40,7 @@ omiten sin afectar el log.
 <dependency>
   <groupId>appbrain</groupId>
   <artifactId>appbrain-stdlog-spring-boot-starter</artifactId>
-  <version>1.0.0-local</version>
+  <version>4.0.0-local</version>
 </dependency>
 ```
 
@@ -58,13 +58,13 @@ mvn clean deploy
 El artefacto queda disponible en:
 
 ```text
-release/appbrain/appbrain-stdlog-spring-boot-starter/1.0.0-local/
+release/appbrain/appbrain-stdlog-spring-boot-starter/4.0.0-local/
 ```
 
 Coordenadas Maven:
 
 ```text
-appbrain:appbrain-stdlog-spring-boot-starter:1.0.0-local
+appbrain:appbrain-stdlog-spring-boot-starter:4.0.0-local
 ```
 
 Para consumir esta versión desde otro proyecto Maven, agrega el repositorio local:
@@ -84,7 +84,7 @@ y declara la dependencia:
 <dependency>
   <groupId>appbrain</groupId>
   <artifactId>appbrain-stdlog-spring-boot-starter</artifactId>
-  <version>1.0.0-local</version>
+  <version>4.0.0-local</version>
 </dependency>
 ```
 

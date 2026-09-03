@@ -70,7 +70,7 @@ Reglas derivadas:
 - El registro de `StdlogVersionEnvironmentPostProcessor` en `META-INF/spring.factories` usa la clave `org.springframework.boot.EnvironmentPostProcessor` (paquete nuevo).
 - Las adaptaciones de API forzadas por Spring Framework 7 se aplican en el sitio de uso (por ejemplo `HttpHeaders.entrySet()` → `HttpHeaders.headerSet()` en `StdlogClientHttpInterceptor`).
 - **Decisión asociada (orden de filtro):** `ControllerBodyAndOutLoggingFilter` pasa de orden `Integer.MIN_VALUE + 1` a `Ordered.LOWEST_PRECEDENCE`. Se ejecuta como el filtro más externo del scope de observabilidad (envuelve la ejecución completa de la cadena para medir tiempos y capturar bodies), mientras `RequestIdMdcFilter` conserva `Integer.MIN_VALUE` para poblar el MDC antes que nadie.
-- La última versión del starter compilada contra Spring Boot 3 queda como referencia para consumidores que aún no migran; no se le añaden features nuevas.
+- ~~La última versión del starter compilada contra Spring Boot 3 queda como referencia para consumidores que aún no migran; no se le añaden features nuevas.~~ **(Anulado por `ADR-0005`: la línea Boot 3 se mantiene activa con paridad funcional en la rama `spring-boot-3.x`.)**
 
 ## Consecuencias
 
@@ -112,3 +112,4 @@ Reglas derivadas:
 
 - Sustituye: ninguna decisión formal previa (no había ADRs); reemplaza el baseline informal Spring Boot 3.
 - Relacionado con: `ADR-0002` (correlación de tracing, incorporada en la misma rama), `ADR-0003` (salida JSON con logstash-encoder 9, bump forzado por esta migración).
+- **Sustituido parcialmente por `ADR-0005`**: la regla "la última versión Boot 3 queda como referencia y no se le añaden features nuevas" queda anulada. La línea Spring Boot 3 se mantiene de forma activa en la rama `spring-boot-3.x` con paridad funcional. El resto de este ADR (migración de `main` a Boot 4.1 / Jackson 3) sigue vigente.

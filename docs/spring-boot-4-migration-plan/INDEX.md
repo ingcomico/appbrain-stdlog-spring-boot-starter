@@ -1,5 +1,10 @@
 # Spring Boot 3 -> 4 Migration Plan
 
+> **Estado: completado.** La migración se ejecutó (ver `ADR-0001`, `ADR-0002`, `ADR-0003`).
+> `main` es la línea Spring Boot 4 y `spring-boot-3.x` la línea Spring Boot 3 con paridad
+> funcional (ver `ADR-0005`, que subsume la política de mantenimiento de `T11`).
+> Este directorio se conserva como registro histórico del plan.
+
 Objetivo: migrar `appbrain-stdlog-spring-boot-starter` a Spring Boot 4 sin perder soporte para Spring Boot 3.
 
 ## Estrategia de ramas
