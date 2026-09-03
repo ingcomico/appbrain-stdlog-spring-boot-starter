@@ -3,7 +3,7 @@
 Starter de logging estructurado (JSON) para aplicaciones Spring Boot. Emite logs bajo el schema `stdlog` para:
 
 - **Controller HTTP**: `CONTROLLER_HTTP` (IN / OUT)
-- **HTTP Client** (`RestTemplate` y `RestClient`): `CLIENT_HTTP` (single-log `direction=IN`)
+- **HTTP Client** (`RestTemplate`, `RestClient` y `WebClient`): `CLIENT_HTTP` (single-log `direction=IN`)
 - **JDBC** (datasource-proxy): `CLIENT_DB` (single-log `direction=OUT`)
 - **Custom / negocio**: eventos definidos por la app (`StdlogCustom`)
 - **Evento extra por excepción MVC**: `event=WARN|ERROR` (según status final 4xx/5xx)
@@ -412,8 +412,8 @@ StdlogCustom.error("UPSTREAM_CALL", "TIMEOUT", Map.of("peer", "users"), exceptio
 
 ### 7.1 Estrategia (single-log)
 
-Se emite un único log por llamada HTTP saliente hecha con `RestTemplate` o
-`RestClient`:
+Se emite un único log por llamada HTTP saliente hecha con `RestTemplate`,
+`RestClient` o `WebClient`:
 - `event=CLIENT_HTTP`, `direction=IN`
 - Incluye request + response:
   - request headers y (si stdlog está en DEBUG) request body
@@ -421,9 +421,10 @@ Se emite un único log por llamada HTTP saliente hecha con `RestTemplate` o
 - En PROD puede filtrar para emitir solo failures (>=400)
 
 `StdlogClientHttpInterceptor` implementa `ClientHttpRequestInterceptor`, interfaz
-pública compartida por `RestTemplate` y `RestClient`, por lo que ambos clientes
-generan el mismo payload `CLIENT_HTTP` y usan la misma configuración
-`stdlog.restclient.*`.
+pública compartida por `RestTemplate` y `RestClient`. Para `WebClient` (reactivo)
+hay un `StdlogWebClientExchangeFilter` aparte que produce el mismo payload vía el
+helper compartido `StdlogClientHttpPayload`. Los tres clientes usan la misma
+configuración `stdlog.restclient.*` (ver ADR-0006).
 
 ### 7.2 Ejemplo esperado
 
@@ -460,6 +461,8 @@ generan el mismo payload `CLIENT_HTTP` y usan la misma configuración
 | `log-all-response-headers` | Si `true`, loguea todos los headers response |
 | `capture-source` | Si `true`, captura caller (stacktrace-walk) — costo CPU |
 | `capture-call-id` | Si `true`, genera `call_id` por llamada |
+| `webclient.enabled` | Si `false`, no se instrumenta `WebClient` (RestTemplate/RestClient siguen). Default `true` |
+| `webclient.max-capture-bytes` | Tope de bufferización por body de `WebClient` para el log. Default `262144` (256 KiB). `0` = sin tope |
 
 ### 7.4 Integración con `RestClient`
 
@@ -529,6 +532,44 @@ public RestTemplate restTemplate() {
 ```
 
 Sin este registro, `CLIENT_HTTP` no aparece aunque `stdlog.restclient.enabled=true`.
+
+### 7.6 Integración con `WebClient`
+
+En aplicaciones **servlet** que además usan `WebClient` como cliente HTTP
+saliente, el starter registra un `ExchangeFilterFunction` y lo añade
+automáticamente a cualquier `WebClient.Builder` del contexto. El evento
+`CLIENT_HTTP` tiene el mismo formato y usa la misma configuración
+`stdlog.restclient.*` que `RestTemplate`/`RestClient`.
+
+```java
+@Bean
+public WebClient webClient(WebClient.Builder builder) {
+    return builder.baseUrl("https://api.example.com").build();
+}
+```
+
+- `request_id` y `operation` se toman del MDC del hilo de request (el caso normal
+  cuando la llamada se resuelve con `.block()`); en un pipeline totalmente
+  reactivo sin context-propagation esos campos se omiten.
+- El body se captura sólo con `logging.level.stdlog=DEBUG`, bufferizado hasta
+  `stdlog.restclient.webclient.max-capture-bytes` (256 KiB por defecto); tu código
+  recibe siempre el body completo.
+- Para apagar sólo esta vía: `stdlog.restclient.webclient.enabled: false`.
+- Aplicaciones WebFlux completas (no sólo el cliente) quedan fuera de alcance.
+
+**Caso manual — `WebClient` construido sin un `WebClient.Builder` del contexto:**
+
+```java
+@Autowired
+private StdlogWebClientExchangeFilter stdlogWebClientExchangeFilter;
+
+@Bean
+public WebClient webClient() {
+    return WebClient.builder()
+            .filter(stdlogWebClientExchangeFilter)
+            .build();
+}
+```
 
 ---
 

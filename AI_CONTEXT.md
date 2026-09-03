@@ -6,7 +6,7 @@ Esta rama es la **línea Spring Boot 3** del starter (ver `ADR-0005`). Tiene **p
 
 - La descripción completa de arquitectura, paquetes, contratos públicos, flujo principal, principios y limitaciones vive en `AI_CONTEXT.md` de la rama `main` y **aplica igual aquí**, salvo las diferencias de plataforma listadas abajo.
 - Para consultarla sin cambiar de rama: `git show main:AI_CONTEXT.md`.
-- Los ADR en `docs/adr/` son los mismos que en `main`. `ADR-0001`, `0002` y `0003` llevan una "Nota de rama" al inicio con lo que difiere en esta línea.
+- Los ADR en `docs/adr/` son los mismos que en `main`. `ADR-0001`, `0002`, `0003` y `0006` llevan una "Nota de rama" al inicio con lo que difiere en esta línea.
 
 ## Diferencias de esta rama respecto a `main`
 
@@ -19,16 +19,18 @@ Esta rama es la **línea Spring Boot 3** del starter (ver `ADR-0005`). Tiene **p
 | `logback-spring-stdlog.xml` | provider `pattern` para `stdlog_lib_version`, `stackTrace` sin `nestedField` | `globalCustomFields` + bloque `stackTrace` original (equivalente en salida) |
 | Customizers HTTP saliente | `org.springframework.boot.restclient.RestClientCustomizer` / `RestTemplateCustomizer` (módulo `spring-boot-restclient`) | `org.springframework.boot.web.client.RestClientCustomizer` / `RestTemplateCustomizer` (parte de `spring-boot`) |
 | `EnvironmentPostProcessor` | paquete `org.springframework.boot`; clave `spring.factories` = `org.springframework.boot.EnvironmentPostProcessor` | paquete `org.springframework.boot.env`; clave `spring.factories` = `org.springframework.boot.env.EnvironmentPostProcessor` |
-| Iteración de `HttpHeaders` en `StdlogClientHttpInterceptor` | `headers.headerSet()` | `headers.entrySet()` |
+| Iteración de `HttpHeaders` en `StdlogClientHttpInterceptor` y `StdlogClientHttpPayload` | `headers.headerSet()` | `headers.entrySet()` |
+| Logging de `WebClient` (`ADR-0006`) | `spring-webflux` + `reactor-core` `provided`; filtro añadido vía `BeanPostProcessor` sobre `WebClient.Builder` | idéntico (el `BeanPostProcessor` evita depender del paquete de `WebClientCustomizer`, que difiere entre majors) |
 
-Nada más difiere. El código de negocio (`StdlogEmitter`, `StdlogTraceCorrelation`, builders de payload, `StdlogProperties`, filtros, interceptores, listener JDBC) es funcionalmente idéntico.
+Nada más difiere. El código de negocio (`StdlogEmitter`, `StdlogTraceCorrelation`, builders de payload, `StdlogProperties`, filtros, interceptores, listener JDBC, `StdlogWebClientExchangeFilter`) es funcionalmente idéntico.
 
 ## Plataforma y build (esta rama)
 
 - Java: bytecode `release` 17; la build corre en JDK 17 a 25.
 - Toolchain: `maven-compiler-plugin` 3.14.0 (`<release>17>`), `maven-surefire-plugin` 3.5.4, `jacoco-maven-plugin` 0.8.15.
+- `spring-webflux` y `io.projectreactor:reactor-core` en scope `provided` (solo para el logging de `WebClient`, `ADR-0006`).
 - `README.md` documenta coordenadas `...:3.0.0-local` para el flujo de `mvn clean deploy` a `release/`.
-- Suite: 177 tests, 0 fallos, verificado en JDK 17 y JDK 25.
+- Suite: 194 tests, 0 fallos, verificado en JDK 17 y JDK 25.
 
 ## Flujo de trabajo en esta rama
 

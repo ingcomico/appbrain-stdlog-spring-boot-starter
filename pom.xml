@@ -51,6 +51,20 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- Solo para el logging de WebClient (cliente saliente reactivo). Ver ADR-0006.
+             El modulo se activa con @ConditionalOnClass(WebClient), asi que sin estas
+             dependencias en el consumidor no tiene ningun efecto. -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webflux</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-core</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>

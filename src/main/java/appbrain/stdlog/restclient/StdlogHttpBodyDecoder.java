@@ -13,7 +13,8 @@ import java.util.zip.InflaterInputStream;
  * (ej. {@code br} / brotli), retorna un {@link Decoded} con {@code decodeError="unsupported-encoding"}
  * en lugar de lanzar excepción, garantizando que el log se emite igualmente (sin body).</p>
  *
- * <p>Clase package-private: solo usada por {@code StdlogClientHttpInterceptor}.</p>
+ * <p>Clase package-private: usada por {@code StdlogClientHttpInterceptor} y
+ * {@code StdlogWebClientExchangeFilter}.</p>
  */
 final class StdlogHttpBodyDecoder {
 
