@@ -24,7 +24,14 @@ class StdlogAutoConfigurationTest {
                     FilterRegistrationBean<?> requestId = (FilterRegistrationBean<?>) context.getBean("requestIdMdcFilter");
                     FilterRegistrationBean<?> controller = (FilterRegistrationBean<?>) context.getBean("stdlogControllerFilter");
                     org.assertj.core.api.Assertions.assertThat(requestId.getOrder()).isEqualTo(Integer.MIN_VALUE);
-                    org.assertj.core.api.Assertions.assertThat(controller.getOrder()).isEqualTo(Ordered.LOWEST_PRECEDENCE);
+                    // ADR-0012: el filtro pasó de LOWEST_PRECEDENCE (el más interno) a estar
+                    // justo por dentro de RequestIdMdcFilter, y por tanto por fuera de la cadena
+                    // de Spring Security (que se registra en -100). Es lo que hace visibles los
+                    // 401/403 e iguala la posición de StdlogWebFilter en la vía reactiva.
+                    org.assertj.core.api.Assertions.assertThat(controller.getOrder()).isEqualTo(Integer.MIN_VALUE + 100);
+                    org.assertj.core.api.Assertions.assertThat(controller.getOrder())
+                            .as("debe quedar por fuera de la cadena de Spring Security (-100)")
+                            .isLessThan(-100);
                 });
     }
 

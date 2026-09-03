@@ -2,11 +2,10 @@
 
 ## Estado
 
-Propuesto
+Aceptado
 
-> Decisión pendiente de ratificar. La implementación no ha empezado: este ADR se escribe
-> **antes** de tocar código, a petición explícita, para que la decisión quede discutida y no
-> derivada de la implementación.
+> Implementado. Las condiciones de aceptación se verificaron con Tomcat y Spring Security
+> reales **antes** de escribir la implementación; ver "Validación".
 
 ## Restricción previa: no perder funcionalidad
 
@@ -240,8 +239,10 @@ están instrumentados por el propio starter y habrían añadido eventos `CLIENT_
 | el `401` emite el evento `WARN` | **no cumple** → lo resuelve la regla 6 |
 | el evento del `401` lleva `route` | **no cumple** → lo resuelve la regla 4 |
 
-Los dos «no cumple» son precisamente las reglas 4 y 6 de este ADR, todavía sin implementar: el
-test se escribió antes que el código y documenta el hueco que la implementación debe cerrar.
+Los dos «no cumple» eran precisamente las reglas 4 y 6 de este ADR: el test se escribió antes
+que el código y documentaba el hueco a cerrar. **Tras la implementación los ocho cumplen**, y el
+test pasa a apoyarse en la autoconfiguración real en lugar de montar los filtros a mano, de modo
+que verifica el cableado de producción.
 
 Un apunte de método: la primera versión del test registraba un **segundo** filtro en lugar de
 reubicar el existente, y eso producía dos pares de eventos por request. No era un defecto de la

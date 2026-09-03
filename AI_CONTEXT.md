@@ -27,8 +27,8 @@ Antes de realizar cambios arquitectonicos, estructurales o que afecten contratos
    - `0007` — logging del evento `CLIENT_DB` para R2DBC (base de datos reactiva, add-on no limitado a apps reactivas).
    - `0008` — soporte de aplicaciones WebFlux (entrada HTTP reactiva) como stack de primera clase. Implementado por fases (todas hechas) en `appbrain.stdlog.webflux`, sin tocar la via servlet.
    - `0010` — enmascaramiento de datos sensibles en el punto unico de emision. Resuelve el hallazgo F-04 de la auditoria.
-   - `0011` — el logging nunca rompe el request, y nunca falla en silencio (`Propuesto`). Resuelve F-07.
-   - `0012` — orden de la instrumentacion de entrada HTTP y paridad servlet/reactivo (`Propuesto`). Resuelve F-08.
+   - `0011` — el logging nunca rompe el request, y nunca falla en silencio. Resuelve F-07. **Decidido; implementacion pendiente.**
+   - `0012` — orden de la instrumentacion de entrada HTTP y paridad servlet/reactivo. Resuelve F-08. **Implementado.**
    - `0016` — integracion continua y verificacion automatica de la paridad entre lineas. Da cumplimiento a `ADR-0005`.
 
    Los numeros `0009` y `0013`-`0015` siguen **reservados** para los hallazgos pendientes de la auditoria tecnica (guardas de classpath ya aplicadas, datos sensibles, fail-safety del logging, orden del filtro, deteccion de entorno, acoplamiento a Logback, versionado del esquema JSON). Se numeraron por tema, no por fecha de creacion, asi que el hueco es deliberado.
@@ -171,6 +171,8 @@ Reglas vigentes:
 - un `WebMvcConfigurer` que lo aplica a `/**` con orden `-100`.
 
 El flujo de controller emite eventos `CONTROLLER_HTTP` para entrada y salida. El filtro puede envolver request/response con `ContentCaching*Wrapper` segun `stdlog.controller.log-request-body` y `stdlog.controller.log-response-body`.
+
+Desde `ADR-0012`, el filtro servlet se registra en `Integer.MIN_VALUE + 100`, es decir **por fuera de la cadena de Spring Security** (que va en `-100`), igual que `StdlogWebFilter` en la via reactiva. Consecuencia observable: los `401`/`403` de Spring Security, los rechazos de CORS y cualquier request cortado por un filtro externo pasan a emitir `CONTROLLER_HTTP` y evento de error, donde antes no emitian nada. Ademas el evento extra de error se emite **segun el status final** y no segun si hubo excepcion, asi que tambien se registran los 4xx/5xx sin excepcion (`ResponseEntity.status(403)`, 404 y 405 de Spring MVC). En los requests que nunca llegan a un handler, `route` se rellena con metodo + URI y `operation` queda ausente, porque no hubo handler que nombrar.
 
 En aplicaciones **WebFlux** (`ADR-0008`), `StdlogWebFluxAutoConfiguration` (`@ConditionalOnWebApplication(REACTIVE)`) registra `StdlogWebFilter`, que emite el mismo `CONTROLLER_HTTP IN/OUT` y el evento extra de error (`WARN`/`ERROR` por status final), resuelve `operation`/`route` desde los atributos del `HandlerMapping` tras la cadena, aplica `excluded-path-patterns`, captura bodies con decoradores reactivos acotados por `maxRequestBodyBytes`/`maxResponseBodyBytes`, y escribe `request_id`/exclusion en el Reactor Context. Reutiliza `stdlog.controller.*` y `stdlog.error.*`; se apaga con `stdlog.controller.webflux.enabled=false`. Desde `ADR-0008` Fase 3, `StdlogWebFluxAutoConfiguration` tambien registra `StdlogWebExceptionHandler` (`@Order(HIGHEST_PRECEDENCE)`), que guarda la excepcion real en un atributo del exchange antes de que `ExceptionHandlingWebHandler` la convierta en respuesta; `StdlogWebFilter` la lee en su `doFinally`, asi el evento de error lleva `type`/`message`/`app_trace` reales (con `doOnError` como respaldo). Tambien en Fase 3, `@StdlogExcluded` en un handler method reactivo suprime sus `CONTROLLER_HTTP`/error INFO.
 
@@ -328,7 +330,7 @@ Suite ejecutada en `main` (`mvn clean test`): 235 tests, 0 fallos, `BUILD SUCCES
 - Los directorios `release` y `target` no estan indexados ni deben tratarse como fuente estructural del codigo.
 - Existen los ADR `0001`-`0008` y `0016` (estado `Aceptado`; suite de tests en verde). El resto de decisiones ya implementadas siguen sin ADR formal.
 - `ADR-0004` (la documentacion viaja en el mismo commit) **no tiene verificacion automatica**: depende de revision humana. `ADR-0005` si la tiene desde `ADR-0016`.
-- Asimetrias servlet/reactivo pendientes de cerrar, ya decididas en ADR pero **sin implementar**: la proteccion contra fallos de logging solo existe en los modulos reactivos (`ADR-0011`), y los dos filtros de entrada estan en extremos opuestos de su cadena, por lo que los `401`/`403` de Spring Security son invisibles en servlet y visibles en WebFlux (`ADR-0012`). `ADR-0012` cubre ademas una **segunda asimetria**: el evento extra de error se emite en servlet solo si hubo excepcion, mientras que en reactivo se guia por el status, asi que la via servlet se pierde todo 4xx/5xx sin excepcion (un `ResponseEntity.status(403)`, un 404 o un 405 resueltos por Spring MVC). Las condiciones de aceptacion de `ADR-0012` se verificaron con Tomcat y Spring Security reales antes de decidir.
+- **`ADR-0011` decidido pero sin implementar**: la proteccion contra fallos de logging sigue existiendo solo en los modulos reactivos (`StdlogWebFilter`, `StdlogR2dbcQueryListener`); el filtro servlet, el listener JDBC y el interceptor HTTP emiten sin red.
 
 ## Decisiones Pendientes
 
