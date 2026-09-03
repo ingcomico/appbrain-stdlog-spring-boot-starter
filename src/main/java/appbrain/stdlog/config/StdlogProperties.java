@@ -432,6 +432,9 @@ public class StdlogProperties {
          */
         private boolean logResponseInfo = false;
 
+        /** Configuración específica de la vía R2DBC (base de datos reactiva). Ver ADR-0007. */
+        private final R2dbc r2dbc = new R2dbc();
+
         public boolean isEnabled() { return enabled; }
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
 
@@ -463,6 +466,25 @@ public class StdlogProperties {
 
         public boolean isLogResponseInfo() { return logResponseInfo; }
         public void setLogResponseInfo(boolean logResponseInfo) { this.logResponseInfo = logResponseInfo; }
+
+        public R2dbc getR2dbc() { return r2dbc; }
+
+        /**
+         * Ajustes de la instrumentación de R2DBC. Comparte el resto de la configuración de
+         * {@code stdlog.jdbc} (niveles, {@code slowQueryThresholdMs}, {@code logOnlySlowOrFailureInProd},
+         * {@code maxSqlChars}, {@code logParams}, {@code maxParamChars}, {@code logResponseInfo}, {@code poolName}).
+         */
+        public static class R2dbc {
+
+            /**
+             * Si {@code false}, no se instrumenta R2DBC (pero el {@code DataSource} JDBC, si lo hay,
+             * sigue instrumentado). Default: {@code true}.
+             */
+            private boolean enabled = true;
+
+            public boolean isEnabled() { return enabled; }
+            public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        }
     }
 
     /**
