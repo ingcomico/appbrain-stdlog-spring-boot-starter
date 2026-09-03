@@ -4,7 +4,7 @@ Starter de logging estructurado (JSON) para aplicaciones Spring Boot. Emite logs
 
 - **Controller HTTP**: `CONTROLLER_HTTP` (IN / OUT)
 - **HTTP Client** (`RestTemplate`, `RestClient` y `WebClient`): `CLIENT_HTTP` (single-log `direction=IN`)
-- **JDBC** (datasource-proxy): `CLIENT_DB` (single-log `direction=OUT`)
+- **Base de datos** (`datasource-proxy` para JDBC, `r2dbc-proxy` para R2DBC): `CLIENT_DB` (single-log `direction=OUT`)
 - **Custom / negocio**: eventos definidos por la app (`StdlogCustom`)
 - **Evento extra por excepción MVC**: `event=WARN|ERROR` (según status final 4xx/5xx)
 
@@ -636,7 +636,34 @@ Un log por query ejecutada:
 | `max-sql-chars` | Truncamiento del SQL |
 | `log-params` | Si `true`, incluye params (cuidado con PII) |
 | `max-param-chars` | Truncamiento de strings en params |
-| `log-response-info` | Si `true`, incluye `db.response` (por v1: `RESULT_SET` vs `UPDATE_COUNT` si aplica) |
+| `log-response-info` | Si `true`, incluye `db.response` (por v1: `RESULT_SET` vs `UPDATE_COUNT` si aplica). Solo JDBC |
+| `r2dbc.enabled` | Si `false`, no se instrumenta R2DBC (JDBC sigue). Default `true` |
+
+### 8.4 R2DBC (base de datos reactiva)
+
+Si el classpath tiene `r2dbc-proxy` y existe un bean `io.r2dbc.spi.ConnectionFactory`,
+el starter registra un `ProxyExecutionListener` y reemplaza el `ConnectionFactory`
+por uno proxeado `@Primary`. Emite el **mismo evento `CLIENT_DB`** y usa la misma
+configuración `stdlog.jdbc.*`.
+
+```java
+@Bean
+public ConnectionFactory connectionFactory() {
+    return ConnectionFactories.get("r2dbc:postgresql://host/db");
+}
+```
+
+- **No** está limitado a apps WebFlux: R2DBC en una app servlet (con `.block()`) es un
+  caso válido, y ahí la correlación con el request (`request_id`, `operation`) es completa.
+- En una app **WebFlux completa**, el evento `CLIENT_DB` se emite igual, pero
+  `request_id`/`operation` sólo aparecen si el consumidor tiene Micrometer
+  context-propagation activo (el starter no instrumenta la entrada HTTP reactiva).
+- `db.response` (filas devueltas/afectadas) no se emite para R2DBC: en R2DBC el
+  conteo es best-effort y asíncrono.
+- Para apagar sólo esta vía: `stdlog.jdbc.r2dbc.enabled: false`.
+
+Dependencias: `io.r2dbc:r2dbc-proxy` + `io.r2dbc:r2dbc-spi` (`provided` en el starter;
+las trae tu app si usa R2DBC).
 
 ---
 

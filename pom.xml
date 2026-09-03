@@ -36,6 +36,21 @@
             <artifactId>datasource-proxy</artifactId>
             <version>1.9</version>
         </dependency>
+
+        <!-- Solo para el logging de R2DBC (cliente de base de datos reactivo). Ver ADR-0007.
+             El modulo se activa con @ConditionalOnClass(ProxyConnectionFactory), asi que sin
+             estas dependencias en el consumidor no tiene ningun efecto. -->
+        <dependency>
+            <groupId>io.r2dbc</groupId>
+            <artifactId>r2dbc-proxy</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.r2dbc</groupId>
+            <artifactId>r2dbc-spi</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
         <dependency>
             <groupId>tools.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
@@ -98,6 +113,18 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Test del logging R2DBC contra una base H2 real en memoria. Ver ADR-0007. -->
+        <dependency>
+            <groupId>io.r2dbc</groupId>
+            <artifactId>r2dbc-h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

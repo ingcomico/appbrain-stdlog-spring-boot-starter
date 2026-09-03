@@ -24,6 +24,7 @@ Antes de realizar cambios arquitectonicos, estructurales o que afecten contratos
    - `0004` — la documentacion afectada se actualiza en el mismo commit/PR que el cambio.
    - `0005` — dos lineas de mantenimiento (`main` = Boot 4, `spring-boot-3.x` = Boot 3) con paridad funcional.
    - `0006` — logging del evento `CLIENT_HTTP` para `WebClient` (cliente saliente reactivo, solo en apps servlet).
+   - `0007` — logging del evento `CLIENT_DB` para R2DBC (base de datos reactiva, add-on no limitado a apps reactivas).
 4. Determinar el impacto antes de modificar codigo.
 5. No duplicar decisiones arquitectonicas en archivos especificos de cada agente.
 6. Si existe una contradiccion entre este archivo, el codigo actual y otros documentos, reportarla antes de asumir cual es correcta.
@@ -36,7 +37,7 @@ El proyecto provee:
 
 - logging de requests/responses HTTP entrantes como `CONTROLLER_HTTP`;
 - logging de llamadas HTTP salientes de `RestTemplate` y `RestClient` como `CLIENT_HTTP`;
-- logging de queries JDBC mediante `datasource-proxy` como `CLIENT_DB`;
+- logging de queries a base de datos como `CLIENT_DB`: JDBC via `datasource-proxy` y R2DBC via `r2dbc-proxy` (ver `ADR-0007`);
 - API publica de eventos de negocio mediante `StdlogCustom`;
 - evento extra para excepciones MVC con severidad `WARN` o `ERROR` segun status final;
 - correlacion de `trace_id` y `span_id` desde MDC o, si esta disponible, OpenTelemetry por reflexion;
@@ -67,6 +68,7 @@ Ambas ofrecen las mismas capacidades, la misma configuracion `stdlog.*`, el mism
   - `spring-boot-restclient`;
   - `spring-webmvc` con scope `provided`;
   - `spring-webflux` y `io.projectreactor:reactor-core` con scope `provided` (solo para el logging de `WebClient`, ver `ADR-0006`);
+  - `io.r2dbc:r2dbc-proxy` y `io.r2dbc:r2dbc-spi` con scope `provided` (solo para el logging de R2DBC, ver `ADR-0007`);
   - `jakarta.servlet-api` con scope `provided`;
   - `tools.jackson.core:jackson-databind` (Jackson 3);
   - `net.ttddyy:datasource-proxy:1.9`;
@@ -112,6 +114,8 @@ El codigo principal esta bajo `src/main/java/appbrain/stdlog`.
   - `StdlogWebClientExchangeFilter` (`WebClient`, ver `ADR-0006`);
   - `StdlogClientHttpPayload` (armado del evento `CLIENT_HTTP`, compartido por el filtro WebClient);
   - `StdlogHttpBodyDecoder`.
+- `appbrain.stdlog.r2dbc`: listener `r2dbc-proxy` para queries reactivas (`CLIENT_DB`, ver `ADR-0007`):
+  - `StdlogR2dbcQueryListener`.
 - `appbrain.stdlog.jdbc`: listener `datasource-proxy`:
   - `StdlogClientDbQueryListener`.
 - `appbrain.stdlog.error`: utilidades de stack trace de aplicacion:
@@ -121,7 +125,7 @@ El codigo principal esta bajo `src/main/java/appbrain/stdlog`.
 
 ### Recursos Publicos
 
-- `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` registra seis autoconfiguraciones (`StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration`, `StdlogRestClientAutoConfiguration`, `StdlogWebClientAutoConfiguration`, `StdlogJdbcAutoConfiguration`, `StdlogErrorAutoConfiguration`).
+- `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` registra siete autoconfiguraciones (`StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration`, `StdlogRestClientAutoConfiguration`, `StdlogWebClientAutoConfiguration`, `StdlogJdbcAutoConfiguration`, `StdlogR2dbcAutoConfiguration`, `StdlogErrorAutoConfiguration`).
 - `META-INF/spring.factories` registra `StdlogVersionEnvironmentPostProcessor` como `EnvironmentPostProcessor`.
 - Existe ademas el archivo `META-INF/spring/org.springframework.boot.EnvironmentPostProcessor` (sin sufijo `.imports`), pero Spring Boot 4 no lo lee por ningun mecanismo: es un archivo inerte heredado y debe eliminarse (ver ADR-0001, Riesgos).
 - `stdlog/logback-spring-stdlog.xml` define un appender JSON de consola, logger `stdlog`, root logger y campo `stdlog_lib_version`.
@@ -193,6 +197,12 @@ Registra:
 
 El listener emite `CLIENT_DB direction=OUT` despues de la query, con tiempo, outcome, flag `slow`, pool, SQL truncado, tipo de sentencia inferido, parametros opcionales y respuesta opcional. En modo productivo puede omitir queries exitosas no lentas segun `stdlog.jdbc.log-only-slow-or-failure-in-prod`.
 
+### R2DBC (base de datos reactiva)
+
+`StdlogR2dbcAutoConfiguration` se activa si `ProxyConnectionFactory` (`r2dbc-proxy`) esta en classpath, existe un bean `io.r2dbc.spi.ConnectionFactory`, y `stdlog.jdbc.enabled` + `stdlog.jdbc.r2dbc.enabled` (ambos default `true`). **No** esta limitada a apps reactivas: R2DBC en una app servlet (con `.block()`) es un caso valido. Registra `StdlogR2dbcQueryListener` (un `ProxyExecutionListener`) y un `ConnectionFactory` `@Primary` proxeado, igual patron que JDBC.
+
+`StdlogR2dbcQueryListener` emite el mismo evento `CLIENT_DB` que el listener JDBC. Reutiliza toda la configuracion `stdlog.jdbc.*`. Correlacion: `beforeQuery` (hilo que suscribe) copia el MDC al `ValueStore` de la query; `afterQuery` (hilo del event-loop) lo restaura alrededor de la emision. En app servlet + `.block()` la correlacion es completa; en app WebFlux depende de Micrometer context-propagation del consumidor. `StdlogClientDbQueryListener` (JDBC) no se modifico. Ver `ADR-0007`.
+
 ### Errores MVC
 
 `StdlogErrorAutoConfiguration` se activa con `stdlog.error.enabled=true` o por omision y registra un `HandlerExceptionResolver`.
@@ -240,13 +250,13 @@ Los payloads custom pasan por `StdlogEmitter`, quedan bajo la clave `stdlog` y s
 ## Decisiones Tecnicas Actuales
 
 - `main` apunta a Spring Boot 4.1.0, bytecode Java 17, build en JDK 17-25. La linea Spring Boot 3 vive en `spring-boot-3.x` (ver "Modelo de Ramas" y `ADR-0005`).
-- El starter esta orientado a aplicaciones servlet, no WebFlux.
+- La entrada HTTP del starter es servlet/MVC (no WebFlux); los clientes salientes cubren stacks bloqueantes y reactivos (`WebClient`, R2DBC).
 - Logback/logstash encoder (v9.0) es el mecanismo de salida JSON provisto.
 - `stdlog.mode=AUTO` cae a no productivo cuando `STDLOG_MODE` no esta definido.
 - `RestTemplate` se envuelve con `BufferingClientHttpRequestFactory` para poder leer bodies.
 - `RestClient` recibe el mismo `StdlogClientHttpInterceptor` mediante customizer.
 - `WebClient` recibe `StdlogWebClientExchangeFilter` (código nuevo, no toca el interceptor síncrono); comparte el formato del evento vía `StdlogClientHttpPayload`.
-- JDBC se instrumenta reemplazando el `DataSource` del consumidor por un proxy `@Primary`.
+- JDBC se instrumenta reemplazando el `DataSource` del consumidor por un proxy `@Primary` (`datasource-proxy`); R2DBC igual, con `@Primary ConnectionFactory` (`r2dbc-proxy`), sin tocar el listener JDBC. Ver `ADR-0007`.
 - `TRACE`, `DEBUG` e `INFO` pueden suprimirse por path/anotacion, pero `WARN` y `ERROR` no.
 - La version de libreria se expone via environment post processor y se agrega al JSON como `stdlog_lib_version`.
 - El binding JSON usa Jackson 3 (`tools.jackson.core:jackson-databind`) tras la migracion desde Jackson 2.
@@ -270,10 +280,11 @@ Suite ejecutada en `main` (`mvn test`): 177 tests, 0 fallos, `BUILD SUCCESS`, ve
 
 ## Limitaciones Actuales
 
-- El starter esta acotado a stack servlet/MVC; no hay evidencia de soporte WebFlux.
+- El starter esta acotado a stack servlet/MVC para la entrada HTTP; los clientes salientes cubiertos son `RestTemplate`/`RestClient`/`WebClient` (HTTP) y JDBC/R2DBC (base de datos). No hay soporte para aplicaciones WebFlux completas (entrada reactiva).
 - El soporte de HTTP saliente cubre `RestTemplate`, `RestClient` y `WebClient` (este ultimo solo como cliente saliente en apps servlet, ver `ADR-0006`); no hay soporte para aplicaciones WebFlux completas.
 - `RestTemplate` queda con request factory buffering, con posible impacto de memoria en bodies grandes.
-- El proxy JDBC como `@Primary DataSource` puede interactuar con configuraciones avanzadas del consumidor, multiples datasources o wrapping previo.
+- El proxy JDBC como `@Primary DataSource` (y el proxy R2DBC como `@Primary ConnectionFactory`) puede interactuar con configuraciones avanzadas del consumidor, multiples datasources/connection factories, pooling o wrapping previo.
+- En R2DBC, `db.response` (filas devueltas/afectadas) no se emite: en R2DBC el conteo es best-effort y asincrono. La correlacion en apps WebFlux depende de context-propagation del consumidor.
 - Las politicas de exclusion basadas en MDC se propagan solo dentro del mismo thread.
 - La captura de source en HTTP saliente usa stacktrace-walk y depende de `consumerBasePackage`; tiene costo de CPU por llamada cuando se habilita.
 - Bodies, headers y parametros SQL pueden contener datos sensibles; la configuracion segura depende del consumidor.
@@ -283,9 +294,9 @@ Suite ejecutada en `main` (`mvn test`): 177 tests, 0 fallos, `BUILD SUCCESS`, ve
 ## Decisiones Pendientes
 
 - Definir si se publica a un repositorio remoto (Maven Central / JitPack) ademas del flujo local `release/`. El esquema de version por linea (`4.x.y` / `3.x.y`) ya esta decidido en `ADR-0005`.
-- Definir si el reemplazo `@Primary DataSource` es el contrato definitivo para JDBC o si debe existir una alternativa menos invasiva.
-- Definir politica formal de soporte para multiples datasources.
-- Definir si el alcance del starter se amplia a aplicaciones WebFlux completas (hoy `ADR-0006` limita el soporte reactivo a `WebClient` como cliente saliente dentro de apps servlet).
+- Definir si el reemplazo `@Primary DataSource` / `@Primary ConnectionFactory` es el contrato definitivo o si debe existir una alternativa menos invasiva.
+- Definir politica formal de soporte para multiples datasources / connection factories.
+- Definir si el alcance del starter se amplia a aplicaciones WebFlux completas (entrada reactiva). Hoy los clientes salientes reactivos (`WebClient`, R2DBC) estan cubiertos por `ADR-0006`/`ADR-0007`, pero no la entrada HTTP reactiva. Candidato a ADR de alcance con plan por fases (ver conversacion de diseño).
 - Definir criterios de seguridad por defecto para headers, bodies y parametros sensibles.
 - Definir si el ciclo `StdlogCustom`/`StdlogEmitter` debe aceptarse como patron de fachada estatica o refactorizarse.
 
@@ -408,11 +419,12 @@ Si existe contradiccion entre estas fuentes, reportarla antes de modificar el si
 - La documentacion afectada se actualiza en el mismo commit/PR que el cambio -> **ADR-0004**.
 - Dos lineas de mantenimiento (`main` Boot 4, `spring-boot-3.x` Boot 3) con paridad funcional -> **ADR-0005**.
 - Logging del evento `CLIENT_HTTP` para `WebClient` (cliente saliente reactivo) -> **ADR-0006**.
+- Logging del evento `CLIENT_DB` para R2DBC (base de datos reactiva) -> **ADR-0007**.
 
 ### Pendientes
 
-- Alcance oficial del starter para aplicaciones WebFlux completas (el cliente `WebClient` ya esta cubierto por `ADR-0006`).
-- Estrategia JDBC: reemplazo `@Primary DataSource` con `datasource-proxy` y politica para multiples datasources.
+- Alcance oficial del starter para aplicaciones WebFlux completas / entrada reactiva (los clientes `WebClient` y R2DBC ya estan cubiertos por `ADR-0006`/`ADR-0007`).
+- Estrategia de instrumentacion de base de datos: reemplazo `@Primary DataSource` / `@Primary ConnectionFactory` y politica para multiples datasources/connection factories.
 - Politica de modo `AUTO` y default a `NON_PROD` cuando `STDLOG_MODE` no esta definido.
 - Politica de exclusion: suprimir solo `TRACE/DEBUG/INFO` y nunca `WARN/ERROR`.
 - Contrato de instrumentacion HTTP saliente para `RestTemplate`/`RestClient`, incluyendo buffering en `RestTemplate` (la vía `WebClient` está en `ADR-0006`).
