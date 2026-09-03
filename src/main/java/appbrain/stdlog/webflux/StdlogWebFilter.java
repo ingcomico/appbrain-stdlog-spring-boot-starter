@@ -3,7 +3,7 @@ package appbrain.stdlog.webflux;
 import appbrain.stdlog.config.StdlogLevel;
 import appbrain.stdlog.config.StdlogProperties;
 import appbrain.stdlog.core.StdlogEmitter;
-import appbrain.stdlog.core.StdlogModeResolver;
+import appbrain.stdlog.core.StdlogReactorContext;
 import appbrain.stdlog.core.StdlogTraceCorrelation;
 import appbrain.stdlog.error.AppTraceUtil;
 import appbrain.stdlog.web.HttpLogExtractors;

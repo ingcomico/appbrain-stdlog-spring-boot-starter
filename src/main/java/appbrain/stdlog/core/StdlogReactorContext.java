@@ -1,15 +1,16 @@
-package appbrain.stdlog.webflux;
+package appbrain.stdlog.core;
 
 import reactor.util.context.ContextView;
 
 /**
- * Claves de correlación que {@link StdlogWebFilter} escribe en el {@code Context} de Reactor
- * y que los puntos de emisión reactivos (filtro de `WebClient`, listener de R2DBC) leen como
- * fuente primaria cuando el MDC está vacío. Ver ADR-0008.
+ * Claves de correlación que {@code StdlogWebFilter} escribe en el {@code Context} de Reactor
+ * y que los puntos de emisión reactivos ({@code StdlogWebClientExchangeFilter},
+ * {@code StdlogR2dbcQueryListener}) leen como fuente primaria cuando el MDC está vacío.
+ * Ver ADR-0008 (Fases 1 y 2).
  *
- * <p>Las claves usan el mismo nombre que las keys de MDC de la vía servlet
- * (`request_id`, `operation`) para que, si el consumidor activa Micrometer
- * context-propagation, el puente MDC↔Context funcione sin traducción.</p>
+ * <p>{@link #REQUEST_ID} usa el mismo nombre que la key de MDC de la vía servlet para que,
+ * si el consumidor activa Micrometer context-propagation, el puente Context↔MDC funcione
+ * sin traducción (ver {@code StdlogWebFluxAutoConfiguration}, que registra el accessor).</p>
  */
 public final class StdlogReactorContext {
 
