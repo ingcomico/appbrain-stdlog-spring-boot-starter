@@ -6,7 +6,7 @@ Esta rama es la **línea Spring Boot 3** del starter (ver `ADR-0005`). Tiene **p
 
 - La descripción completa de arquitectura, paquetes, contratos públicos, flujo principal, principios y limitaciones vive en `AI_CONTEXT.md` de la rama `main` y **aplica igual aquí**, salvo las diferencias de plataforma listadas abajo.
 - Para consultarla sin cambiar de rama: `git show main:AI_CONTEXT.md`.
-- Los ADR en `docs/adr/` son los mismos que en `main`. `ADR-0001`, `0002`, `0003` y `0006` llevan una "Nota de rama" al inicio con lo que difiere en esta línea. `ADR-0007` (R2DBC) y `ADR-0008` (soporte WebFlux; **todas las fases hechas**) aplican sin diferencias.
+- Los ADR en `docs/adr/` son los mismos que en `main`. `ADR-0001`, `0002`, `0003` y `0006` llevan una "Nota de rama" al inicio con lo que difiere en esta línea. `ADR-0007` (R2DBC), `ADR-0008` (soporte WebFlux; **todas las fases hechas**), `ADR-0010` (enmascaramiento de datos sensibles) y `ADR-0016` (CI y paridad) aplican sin diferencias.
 
 ## Diferencias de esta rama respecto a `main`
 
@@ -24,9 +24,10 @@ Esta rama es la **línea Spring Boot 3** del starter (ver `ADR-0005`). Tiene **p
 | Logging de R2DBC (`ADR-0007`) | `io.r2dbc:r2dbc-proxy` + `r2dbc-spi` `provided` | **idéntico** (código agnóstico: `io.r2dbc.*` + `org.slf4j.MDC`) |
 | Entrada WebFlux (`ADR-0008`, todas las fases) | `spring-webflux` + `io.micrometer:context-propagation` `provided`; `StdlogWebFilter`, `StdlogWebExceptionHandler`, `StdlogCustomReactive`, `StdlogReactiveCorrelation`, lectura del Reactor Context en `StdlogWebClientExchangeFilter`, `ThreadLocalAccessor` de `request_id` | **idéntico** (usa API de Spring 6/7 común: `WebFilter`, `WebExceptionHandler`, `HandlerMapping`, `AnnotatedElementUtils`, decoradores reactivos, `Mono.deferContextual`) |
 
+| Enmascaramiento de datos sensibles (`ADR-0010`) | `StdlogMasker` en `core`, aplicado desde `StdlogEmitter`; `StdlogMaskingAutoConfiguration` sin condiciones de classpath | **idéntico** (sólo usa JDK: `Map`, `List`, `Pattern`) |
 | Guardas de las autoconfiguraciones servlet (auditoría F-01) | `@ConditionalOnClass` + `@ConditionalOnWebApplication(SERVLET)` en `StdlogWebMvcAutoConfiguration` y `StdlogErrorAutoConfiguration`, para que una app WebFlux pura arranque sin `spring-webmvc` | **idéntico** (las dos anotaciones existen igual en Boot 3 y Boot 4) |
 
-Nada más difiere. El código de negocio (`StdlogEmitter`, `StdlogTraceCorrelation`, builders de payload, `StdlogProperties`, filtros, interceptores, listener JDBC, `StdlogWebClientExchangeFilter`, `StdlogR2dbcQueryListener`, `StdlogWebFilter`, `StdlogWebExceptionHandler`, `StdlogCustomReactive`, `StdlogReactiveCorrelation`) es funcionalmente idéntico.
+Nada más difiere. El código de negocio (`StdlogEmitter`, `StdlogTraceCorrelation`, builders de payload, `StdlogProperties`, filtros, interceptores, listener JDBC, `StdlogWebClientExchangeFilter`, `StdlogR2dbcQueryListener`, `StdlogWebFilter`, `StdlogWebExceptionHandler`, `StdlogCustomReactive`, `StdlogReactiveCorrelation`, `StdlogMasker`) es funcionalmente idéntico.
 
 ## Plataforma y build (esta rama)
 
@@ -38,7 +39,7 @@ Nada más difiere. El código de negocio (`StdlogEmitter`, `StdlogTraceCorrelati
 - El jar **no** empaqueta `META-INF/build-info.properties`: la ejecución del goal `build-info` se eliminó (auditoría F-03), porque podía secuestrar el `/actuator/info` del consumidor. La versión de librería se expone por `stdlog-version.properties`.
 - `README.md` documenta coordenadas `...:3.0.0-local` para el flujo de `mvn clean deploy` a `release/`.
 - Trinquete de cobertura (`ADR-0016`): `jacoco:check` en fase `verify`, mínimos de 85 % de líneas y 65 % de ramas. `mvn test` no lo ejecuta.
-- Suite: 235 tests, 0 fallos, verificado en JDK 17 y JDK 25.
+- Suite: 261 tests, 0 fallos, verificado en JDK 17 y JDK 25.
 
 ## Integración continua (`ADR-0016`)
 

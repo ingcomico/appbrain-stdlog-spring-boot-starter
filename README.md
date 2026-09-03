@@ -28,6 +28,7 @@ omiten sin afectar el log.
 - [8. JDBC logs (CLIENT_DB)](#8-jdbc-logs-client_db)
 - [9. Evento extra por excepción MVC (WARN/ERROR)](#9-evento-extra-por-excepción-mvc-warnerror)
 - [10. Recomendaciones de seguridad y performance](#10-recomendaciones-de-seguridad-y-performance)
+  - [10.1 Enmascaramiento de datos sensibles](#101-enmascaramiento-de-datos-sensibles)
 - [11. Troubleshooting](#11-troubleshooting)
 
 ---
@@ -768,10 +769,70 @@ Incluye:
 
 ## 10. Recomendaciones de seguridad y performance
 
+### 10.1 Enmascaramiento de datos sensibles
+
+Desde **ADR-0010** el starter enmascara valores sensibles **por defecto, sin configurar nada**.
+Se aplica en `StdlogEmitter`, el punto único por el que pasan todos los eventos, así que
+cubre a la vez las cinco superficies por las que podía salir un dato:
+
+- bodies de request y response del controller (servlet y WebFlux),
+- bodies de `CLIENT_HTTP`,
+- `queryParams`,
+- `db.params`,
+- headers, incluido `Authorization` cuando se activa `logAllRequestHeaders`.
+
+```json
+{
+  "stdlog": {
+    "request": {
+      "headers": { "authorization": "***" },
+      "body": "{\"user\":\"ana\",\"password\":\"***\"}"
+    }
+  }
+}
+```
+
+**Cómo decide qué enmascarar.** Por *nombre de clave*. La clave se normaliza —minúsculas y
+sin `_`, `-`, `.`— y se compara por igualdad exacta, así que `card_number`, `cardNumber` y
+`Card-Number` coinciden entre sí. No se compara por subcadena, a propósito: si no,
+`shipping` activaría la regla `pin`.
+
+Claves incorporadas: `password`, `passwd`, `pwd`, `secret`, `clientSecret`, `token`,
+`accessToken`, `refreshToken`, `idToken`, `authorization`, `apiKey`, `apiToken`,
+`credential(s)`, `privateKey`, `sessionId`, `cookie`, `cardNumber`, `pan`, `cvv`, `cvc`,
+`pin`, `otp`, `ssn`, `taxId`.
+
+```yaml
+stdlog:
+  masking:
+    enabled: true              # default
+    additional-keys: [iban, nss]   # añade a la lista incorporada
+    # keys: [iban]             # REEMPLAZA la lista incorporada
+    placeholder: "***"         # default
+```
+
+> **Los bodies siguen capturándose igual.** El enmascaramiento reduce el riesgo sin quitar
+> funcionalidad: no hubo que apagar `logRequestBody` ni `logResponseBody`.
+
+**Dos límites que conviene conocer:**
+
+1. **Es por nombre de clave, no por contenido.** Un campo sensible con un nombre que no está
+   en la lista sigue saliendo en claro. Añadilo con `additional-keys`.
+2. **Sobre bodies que llegan como texto es best-effort.** Ahí se enmascaran los pares
+   `"clave": valor` y `clave=valor` operando sobre el texto y no sobre un árbol —así funciona
+   también con bodies truncados o con JSON inválido, que es cuando un parser fallaría—, pero
+   una estructura muy exótica podría escapársele.
+
+No sustituye a no enviar el dato: si algo no debe salir nunca del proceso, lo correcto sigue
+siendo no capturarlo.
+
+### 10.2 Configuraciones a vigilar
+
 | Configuración | Riesgo |
 |---------------|--------|
-| `restclient.logAllRequestHeaders=true` | Puede exponer tokens/PII |
-| `jdbc.logParams=true` | Puede exponer datos sensibles |
+| `masking.enabled=false` | Desactiva todo el enmascaramiento — sólo para depurar en local |
+| `restclient.logAllRequestHeaders=true` | Incluye todas las cabeceras; las sensibles van enmascaradas, las de nombre no previsto no |
+| `jdbc.logParams=true` | Puede exponer datos sensibles con nombres de parámetro no previstos |
 | `restclient.captureSource=true` | Hace stacktrace-walk por llamada (costo CPU) |
 | `restclient.maxBodyChars=0` + `logging.level.stdlog=DEBUG` | Puede generar logs muy grandes |
 | `controller.allowedContentTypes` con binarios/multipart | Puede llenar heap/logs — evitar |
