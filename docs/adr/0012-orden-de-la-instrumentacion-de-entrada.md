@@ -38,6 +38,21 @@ comprobó que no hay intercambio ninguno. Ver "Validación".
 
   En WebFlux, los mismos casos **sí** se emiten, porque su filtro es el más externo.
 
+- **Hay una segunda asimetría, y es la que de verdad muerde.** El evento extra de error se
+  emite con condiciones distintas en cada vía:
+
+  | | condición para emitir el evento extra |
+  |---|---|
+  | servlet (`ControllerBodyAndOutLoggingFilter`) | `if (!(exObj instanceof Throwable)) return;` — exige **excepción** |
+  | reactivo (`StdlogWebFilter`) | `if (status < 400) return;` — se guía por el **status** |
+
+  Un `401` de Spring Security **no lanza excepción**: escribe la respuesta y vuelve. Por eso la
+  vía servlet condiciona el log a que la aplicación *falle*, en lugar de a *cuál fue el
+  resultado*. Que no falle no significa que no haya nada que registrar.
+
+  Esto va más allá de los rechazos de seguridad: hoy la vía servlet **también se pierde** todo
+  4xx/5xx sin excepción que sí llega al filtro — un controller que devuelve
+  `ResponseEntity.status(403)`, un 404 o un 405 resueltos por Spring MVC sin excepción.
 - Es justo el tipo de evento que más importa en producción, y contradice la paridad funcional
   que `ADR-0005` da por establecida entre las dos líneas.
 - `RequestIdMdcFilter` ya está en `Integer.MIN_VALUE`, o sea el más externo de todos: el
@@ -121,25 +136,29 @@ e inventarla sería peor. No hay pérdida respecto al estado actual porque hoy *
 emiten nada en absoluto**. El campo pasa de «no existe el evento» a «el evento existe y no
 incluye `operation`», que es estrictamente más información.
 
-**6. La exclusión por path sigue evaluándose en el filtro** y por tanto también aplica a los
+**6. El evento extra de error se guía por el status, no por la existencia de excepción.**
+`logErrorOrWarnEventIfPresent(...)` pasa a emitir cuando `status >= 400`, adjuntando la
+excepción cuando exista y, cuando no, un mensaje que indique que no la hay — exactamente lo que
+ya hace `StdlogWebFilter.emitErrorEvent(...)`. Es un cambio **independiente del orden del
+filtro** y con valor propio: sin él, mover el filtro daría el `401` en el `CONTROLLER_HTTP OUT`
+pero seguiría sin emitir el evento `WARN`. Con él, además, dejan de perderse los 4xx/5xx sin
+excepción que ya hoy llegan al filtro.
+
+**7. La exclusión por path sigue evaluándose en el filtro** y por tanto también aplica a los
 requests rechazados por seguridad: un `401` en `/actuator/**` no generará ruido de nivel INFO,
 pero sí el evento `WARN` correspondiente, porque `WARN`/`ERROR` nunca se suprimen
 (`StdlogEmitter`).
 
-### Condición de aceptación de la implementación
+### Condición de aceptación: verificada antes de decidir
 
-El riesgo de esta decisión no está en el orden sino en los wrappers. La implementación **no se
-considera válida** sin verificar, con tests, que al mover el filtro:
+El riesgo de esta decisión no está en el orden sino en los wrappers, y con mocks no se podía
+descargar: `MockHttpServletRequest` no parsea bodies de formulario como un contenedor. Se
+levantó por eso un test con **Tomcat y Spring Security reales**
+(`ControllerFilterOrderContainerTest`), con el filtro ya en el orden propuesto, **antes** de
+escribir una línea de implementación. Resultados en "Validación": las tres condiciones se
+cumplen.
 
-- un *form login* de Spring Security (`application/x-www-form-urlencoded` leído por la cadena de
-  seguridad) sigue autenticando correctamente con `ContentCachingRequestWrapper` por fuera;
-- la respuesta se confirma y se copia correctamente cuando la cadena de seguridad la escribe
-  directamente sin llegar al `DispatcherServlet`;
-- los requests asíncronos (`DeferredResult`, `CompletableFuture`) siguen emitiendo un único par
-  IN/OUT.
-
-Si alguna de las tres no se cumple, la decisión se revisa: la Alternativa 3 queda como plan de
-contingencia, porque no toca los wrappers.
+La Alternativa 3 queda descartada como contingencia por innecesaria.
 
 ## Consecuencias
 
@@ -204,13 +223,42 @@ Las dos conclusiones que ordenan este ADR:
 2. **En el request rechazado se gana un evento donde no había ninguno.** El `route=null` de la
    última fila es lo que motiva la regla 4: se rellenará con `método + URI`.
 
-**Antes de aceptar la implementación**, además de las tres condiciones de aceptación:
+**Verificación en contenedor real.** `ControllerFilterOrderContainerTest` arranca Tomcat con
+Spring Security y el filtro en el orden propuesto (`Integer.MIN_VALUE + 100`, con
+`StdlogAutoConfiguration` excluida para que haya **un solo** filtro y se mida el orden y no una
+duplicación). El cliente es el `HttpClient` del JDK a propósito: `RestTemplate` y `RestClient`
+están instrumentados por el propio starter y habrían añadido eventos `CLIENT_HTTP` al appender.
+
+| condición | resultado |
+|---|---|
+| *form login* autentica con `ContentCachingRequestWrapper` por fuera | **cumple** |
+| la credencial del formulario no aparece en el log | **cumple** (`ADR-0010` funciona en contenedor real) |
+| el `401` y el body de respuesta llegan intactos al cliente | **cumple** |
+| requests asíncronos emiten exactamente un par IN/OUT | **cumple** |
+| un request normal conserva `operation` y `route` | **cumple**, idénticos |
+| el `401` emite `CONTROLLER_HTTP` IN y OUT con `status`, `outcome` y `request_id` | **cumple** |
+| el `401` emite el evento `WARN` | **no cumple** → lo resuelve la regla 6 |
+| el evento del `401` lleva `route` | **no cumple** → lo resuelve la regla 4 |
+
+Los dos «no cumple» son precisamente las reglas 4 y 6 de este ADR, todavía sin implementar: el
+test se escribió antes que el código y documenta el hueco que la implementación debe cerrar.
+
+Un apunte de método: la primera versión del test registraba un **segundo** filtro en lugar de
+reubicar el existente, y eso producía dos pares de eventos por request. No era un defecto de la
+librería sino del test; corregirlo fue lo que permitió medir el escenario real. Queda anotado
+porque la conclusión contraria —«mover el filtro duplica eventos»— habría sido un falso positivo
+capaz de tumbar esta decisión.
+
+**Antes de aceptar la implementación**, además:
 
 - suite servlet completa en verde como prueba de no-regresión, en JDK 17 y JDK 25 (`ADR-0016`);
-- un test que compruebe que un `401` cortado por un filtro externo emite `CONTROLLER_HTTP` y el
-  evento `WARN`, con `route` relleno;
-- un test que compruebe que un request normal sigue emitiendo `operation` y `route` idénticos;
-- portado a `spring-boot-3.x` (`ADR-0005`).
+- que los dos «no cumple» de la tabla pasen a cumplir;
+- un test de que un 4xx **sin excepción** que sí llega al filtro (por ejemplo
+  `ResponseEntity.status(403)`) emite el evento `WARN`, que es la parte de la regla 6 con valor
+  independiente del orden;
+- portado a `spring-boot-3.x` (`ADR-0005`). El test de contenedor necesita
+  `spring-boot-starter-web` y `spring-boot-starter-security` en scope `test`; `TestRestTemplate`
+  no se usa porque Boot 4 lo retiró, y el `HttpClient` del JDK funciona igual en las dos ramas.
 
 ## Relación con Otros ADR
 

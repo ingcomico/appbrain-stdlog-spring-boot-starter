@@ -328,7 +328,7 @@ Suite ejecutada en `main` (`mvn clean test`): 235 tests, 0 fallos, `BUILD SUCCES
 - Los directorios `release` y `target` no estan indexados ni deben tratarse como fuente estructural del codigo.
 - Existen los ADR `0001`-`0008` y `0016` (estado `Aceptado`; suite de tests en verde). El resto de decisiones ya implementadas siguen sin ADR formal.
 - `ADR-0004` (la documentacion viaja en el mismo commit) **no tiene verificacion automatica**: depende de revision humana. `ADR-0005` si la tiene desde `ADR-0016`.
-- Asimetrias servlet/reactivo pendientes de cerrar, ya decididas en ADR pero **sin implementar**: la proteccion contra fallos de logging solo existe en los modulos reactivos (`ADR-0011`), y los dos filtros de entrada estan en extremos opuestos de su cadena, por lo que los `401`/`403` de Spring Security son invisibles en servlet y visibles en WebFlux (`ADR-0012`).
+- Asimetrias servlet/reactivo pendientes de cerrar, ya decididas en ADR pero **sin implementar**: la proteccion contra fallos de logging solo existe en los modulos reactivos (`ADR-0011`), y los dos filtros de entrada estan en extremos opuestos de su cadena, por lo que los `401`/`403` de Spring Security son invisibles en servlet y visibles en WebFlux (`ADR-0012`). `ADR-0012` cubre ademas una **segunda asimetria**: el evento extra de error se emite en servlet solo si hubo excepcion, mientras que en reactivo se guia por el status, asi que la via servlet se pierde todo 4xx/5xx sin excepcion (un `ResponseEntity.status(403)`, un 404 o un 405 resueltos por Spring MVC). Las condiciones de aceptacion de `ADR-0012` se verificaron con Tomcat y Spring Security reales antes de decidir.
 
 ## Decisiones Pendientes
 
