@@ -19,6 +19,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 
@@ -102,21 +103,76 @@ class StdlogR2dbcQueryListenerTest {
         assertNotNull(appender.list.get(appender.list.size() - 1).getThrowableProxy());
     }
 
+    /**
+     * La duración se inyecta en lugar de medirse: la versión anterior lanzaba una consulta de
+     * 2M filas confiando en que superara 1 ms, y en hardware rápido con el JIT caliente H2 la
+     * resolvía por debajo del umbral, así que el test fallaba de forma intermitente. Lo que
+     * hay que verificar es la regla `elapsedMs >= slowQueryThresholdMs`, no la velocidad de H2.
+     */
     @Test
     void shouldMarkSlowQueryAndUseWarnLevel() {
         StdlogProperties p = props();
-        p.getJdbc().setSlowQueryThresholdMs(1);
-        Connection c = Mono.from(proxied(p).create()).block();
+        p.getJdbc().setSlowQueryThresholdMs(50);
         appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
-        try {
-            // consulta pesada: recorre un rango de 2M filas -> supera 1ms con holgura
-            run(c, "SELECT COUNT(*) FROM SYSTEM_RANGE(1, 2000000)");
-            Map<String, Object> payload = lastPayload();
-            assertEquals(true, payload.get("slow"));
-            assertEquals(Level.WARN, appender.list.get(appender.list.size() - 1).getLevel());
-        } finally {
-            Mono.from(c.close()).block();
+
+        new StdlogR2dbcQueryListener(p).afterQuery(queryTaking(Duration.ofMillis(120), "SELECT 1"));
+
+        Map<String, Object> payload = lastPayload();
+        assertEquals(true, payload.get("slow"));
+        assertEquals(120L, ((Number) payload.get("elapsedMs")).longValue());
+        assertEquals(Level.WARN, appender.list.get(appender.list.size() - 1).getLevel());
+    }
+
+    /** Justo por debajo del umbral: la misma regla, del otro lado de la frontera. */
+    @Test
+    void shouldNotMarkQueryBelowTheSlowThreshold() {
+        StdlogProperties p = props();
+        p.getJdbc().setSlowQueryThresholdMs(50);
+        appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
+
+        new StdlogR2dbcQueryListener(p).afterQuery(queryTaking(Duration.ofMillis(49), "SELECT 1"));
+
+        assertEquals(false, lastPayload().get("slow"));
+        assertEquals(Level.INFO, appender.list.get(appender.list.size() - 1).getLevel());
+    }
+
+    private static io.r2dbc.proxy.core.QueryExecutionInfo queryTaking(Duration duration, String sql) {
+        return new StubQueryExecutionInfo(duration, sql);
+    }
+
+    /**
+     * Stub a mano de {@code QueryExecutionInfo}. La implementación mutable de r2dbc-proxy es
+     * package-private, y en esta JDK no se usan mocks dinámicos (ver convención del proyecto),
+     * así que se implementa la interfaz con lo mínimo que el listener consulta.
+     */
+    private record StubQueryExecutionInfo(Duration duration, String sql)
+            implements io.r2dbc.proxy.core.QueryExecutionInfo {
+
+        @Override public Duration getExecuteDuration() { return duration; }
+        @Override public java.util.List<io.r2dbc.proxy.core.QueryInfo> getQueries() {
+            return java.util.List.of(new io.r2dbc.proxy.core.QueryInfo(sql));
         }
+        @Override public io.r2dbc.proxy.core.ValueStore getValueStore() {
+            return new io.r2dbc.proxy.core.DefaultValueStore();
+        }
+        @Override public Throwable getThrowable() { return null; }
+        @Override public boolean isSuccess() { return true; }
+        @Override public io.r2dbc.proxy.core.ConnectionInfo getConnectionInfo() { return null; }
+        @Override public java.lang.reflect.Method getMethod() { return null; }
+        @Override public Object[] getMethodArgs() { return new Object[0]; }
+        @Override public int getBatchSize() { return 0; }
+        @Override public io.r2dbc.proxy.core.ExecutionType getType() {
+            return io.r2dbc.proxy.core.ExecutionType.STATEMENT;
+        }
+        @Override public int getBindingsSize() { return 0; }
+        @Override public String getThreadName() { return Thread.currentThread().getName(); }
+        @SuppressWarnings("deprecation") // threadId() es de Java 19 y el artefacto compila con release 17
+        @Override public long getThreadId() { return Thread.currentThread().getId(); }
+        @Override public io.r2dbc.proxy.core.ProxyEventType getProxyEventType() {
+            return io.r2dbc.proxy.core.ProxyEventType.AFTER_QUERY;
+        }
+        @Override public int getCurrentResultCount() { return 0; }
+        @Override public Object getCurrentMappedResult() { return null; }
     }
 
     @Test

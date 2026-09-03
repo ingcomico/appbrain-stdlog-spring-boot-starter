@@ -26,6 +26,8 @@ Esta rama es la **línea Spring Boot 3** del starter (ver `ADR-0005`). Tiene **p
 | Logging de R2DBC (`ADR-0007`) | `io.r2dbc:r2dbc-proxy` + `r2dbc-spi` `provided` | **idéntico** (código agnóstico: `io.r2dbc.*` + `org.slf4j.MDC`) |
 | Entrada WebFlux (`ADR-0008`, todas las fases) | `spring-webflux` + `io.micrometer:context-propagation` `provided`; `StdlogWebFilter`, `StdlogWebExceptionHandler`, `StdlogCustomReactive`, `StdlogReactiveCorrelation`, lectura del Reactor Context en `StdlogWebClientExchangeFilter`, `ThreadLocalAccessor` de `request_id` | **idéntico** (usa API de Spring 6/7 común: `WebFilter`, `WebExceptionHandler`, `HandlerMapping`, `AnnotatedElementUtils`, decoradores reactivos, `Mono.deferContextual`) |
 
+| Orden del filtro de entrada (`ADR-0012`) | `ControllerBodyAndOutLoggingFilter` en `Integer.MIN_VALUE + 100`, por fuera de la cadena de Spring Security; evento de error por status | **idéntico** (mismo `FilterRegistrationBean` y misma lógica) |
+| Test de contenedor de `ADR-0012` | `spring-boot-starter-web` y `spring-boot-starter-security` en scope `test`; cliente `HttpClient` del JDK | **idéntico** (se evitó `TestRestTemplate`, que Boot 4 retiró, precisamente para que el test valga en las dos ramas) |
 | Enmascaramiento de datos sensibles (`ADR-0010`) | `StdlogMasker` en `core`, aplicado desde `StdlogEmitter`; `StdlogMaskingAutoConfiguration` sin condiciones de classpath | **idéntico** (sólo usa JDK: `Map`, `List`, `Pattern`) |
 | Guardas de las autoconfiguraciones servlet (auditoría F-01) | `@ConditionalOnClass` + `@ConditionalOnWebApplication(SERVLET)` en `StdlogWebMvcAutoConfiguration` y `StdlogErrorAutoConfiguration`, para que una app WebFlux pura arranque sin `spring-webmvc` | **idéntico** (las dos anotaciones existen igual en Boot 3 y Boot 4) |
 
@@ -41,7 +43,7 @@ Nada más difiere. El código de negocio (`StdlogEmitter`, `StdlogTraceCorrelati
 - El jar **no** empaqueta `META-INF/build-info.properties`: la ejecución del goal `build-info` se eliminó (auditoría F-03), porque podía secuestrar el `/actuator/info` del consumidor. La versión de librería se expone por `stdlog-version.properties`.
 - `README.md` documenta coordenadas `...:3.0.0-local` para el flujo de `mvn clean deploy` a `release/`.
 - Trinquete de cobertura (`ADR-0016`): `jacoco:check` en fase `verify`, mínimos de 85 % de líneas y 65 % de ramas. `mvn test` no lo ejecuta.
-- Suite: 261 tests, 0 fallos, verificado en JDK 17 y JDK 25.
+- Suite: 269 tests, 0 fallos, verificado en JDK 17 y JDK 25.
 
 ## Integración continua (`ADR-0016`)
 

@@ -152,25 +152,36 @@ public class ControllerBodyAndOutLoggingFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Evento extra:
-     * - 4xx => event=WARN y level=WARN
-     * - 5xx => event=ERROR y level=ERROR
-     * - NO se emite para errores de validación (MethodArgumentNotValidException)
-     * <p>
-     * Para "clickable": se loguea pasando el Throwable al logger (StdlogEmitter.emit(..., ex))
-     * y se evita meter stack_trace/stack_trace_text dentro de stdlog.
+     * Evento extra de error:
+     * <ul>
+     *   <li>4xx =&gt; {@code event=WARN} y nivel {@code WARN}</li>
+     *   <li>5xx =&gt; {@code event=ERROR} y nivel {@code ERROR}</li>
+     * </ul>
+     *
+     * <p>Se emite <b>según el status final</b>, no según si hubo excepción (ADR-0012, regla 6).
+     * Un {@code 401} de Spring Security, un {@code ResponseEntity.status(403)} devuelto por un
+     * controller o un {@code 404}/{@code 405} resuelto por Spring MVC no lanzan excepción, y aun
+     * así son resultados que hay que registrar: que la aplicación no falle no significa que no
+     * haya nada que loguear. Es además la condición que ya usaba
+     * {@code StdlogWebFilter.emitErrorEvent(...)} en la vía reactiva, así que las dos vías pasan
+     * a comportarse igual.</p>
+     *
+     * <p>Cuando hay excepción se adjunta al logger para que el encoder emita un stack trace
+     * estándar y cliqueable, y se incluye {@code app_trace}. Cuando no la hay, el nodo
+     * {@code error} lo indica explícitamente en lugar de omitirse.</p>
      */
     private void logErrorOrWarnEventIfPresent(HttpServletRequest req, HttpServletResponse res) {
         if (props.getError() == null || !props.getError().isEnabled()) {
             return;
         }
 
-        Object exObj = req.getAttribute(StdlogAttrs.ERROR);
-        if (!(exObj instanceof Throwable ex)) {
+        int status = (res != null) ? res.getStatus() : 500;
+        if (status < 400) {
             return;
         }
 
-        int status = (res != null) ? res.getStatus() : 500;
+        Object exObj = req.getAttribute(StdlogAttrs.ERROR);
+        Throwable ex = (exObj instanceof Throwable t) ? t : null;
 
         boolean is5xx = status >= 500;
         String eventName = is5xx ? "ERROR" : "WARN";
@@ -185,13 +196,17 @@ public class ControllerBodyAndOutLoggingFilter extends OncePerRequestFilter {
         stdlog.put("http", http);
 
         Map<String, Object> err = new LinkedHashMap<>();
-        err.put("app_trace", AppTraceUtil.appTrace(ex, appTracePackagePrefix(), 15));
-        err.put("type", ex.getClass().getName());
-        err.put("message", ex.getMessage());
+        if (ex != null) {
+            err.put("app_trace", AppTraceUtil.appTrace(ex, appTracePackagePrefix(), 15));
+            err.put("type", ex.getClass().getName());
+            err.put("message", ex.getMessage());
+        } else {
+            err.put("message", "HTTP " + status + " (sin excepcion asociada)");
+        }
         stdlog.put("error", err);
 
-        // Pasamos Throwable para que el encoder emita stacktrace estándar y sea cliqueable
-        StdlogEmitter.emit(STDLOG, level, stdlog, ex);
+        if (ex != null) StdlogEmitter.emit(STDLOG, level, stdlog, ex);
+        else StdlogEmitter.emit(STDLOG, level, stdlog);
     }
 
     private String appTracePackagePrefix() {
@@ -357,9 +372,11 @@ public class ControllerBodyAndOutLoggingFilter extends OncePerRequestFilter {
         if (op != null) {
             stdlog.put("operation", op);
         }
-        if (route != null) {
-            stdlog.put("route", route);
-        }
+        // Respaldo de route (ADR-0012, regla 4): en un request que nunca llegó al handler
+        // —rechazado por Spring Security, por CORS o por un filtro externo— no hay patrón de
+        // HandlerMapping, así que se usa método + URI, igual que StdlogWebFilter en la vía
+        // reactiva. `operation` sí se queda ausente: nunca hubo handler que nombrar.
+        stdlog.put("route", route != null ? route : req.getMethod() + " " + req.getRequestURI());
 
         String requestId = MDC.get("request_id");
         if (requestId != null && !requestId.isBlank()) {

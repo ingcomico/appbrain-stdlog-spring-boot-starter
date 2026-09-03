@@ -220,8 +220,16 @@ class ControllerBodyAndOutLoggingFilterBehaviorTest {
             ((HttpServletResponse) s).setStatus(404);
         });
 
-        assertEquals(1, appender.list.size(), "IN (INFO) se suprime, pero OUT es WARN por default y no");
+        // IN es INFO y se suprime por la exclusión; OUT es WARN por default y no se suprime.
+        // Desde ADR-0012 (regla 6) se emite además el evento extra de error, porque ahora se
+        // guía por el status y no por la existencia de excepción: un 404 sin excepción también
+        // es un resultado que hay que registrar. Antes de ese ADR aquí sólo salía el OUT.
+        assertEquals(2, appender.list.size(), "OUT (WARN) + evento extra de error (WARN)");
         assertEquals("OUT", payload(0).get("direction"));
+        assertEquals("WARN", payload(1).get("event"));
+        assertEquals(404, ((java.util.Map<?, ?>) payload(1).get("http")).get("status"));
+        assertEquals("HTTP 404 (sin excepcion asociada)",
+                ((java.util.Map<?, ?>) payload(1).get("error")).get("message"));
     }
 
     @Test

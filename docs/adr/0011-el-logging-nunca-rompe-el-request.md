@@ -2,11 +2,9 @@
 
 ## Estado
 
-Propuesto
+Aceptado
 
-> Decisión pendiente de ratificar. La implementación no ha empezado: este ADR se escribe
-> **antes** de tocar código, a petición explícita, para que la decisión quede discutida y no
-> derivada de la implementación.
+> Decisión ratificada; **implementación pendiente**, en un cambio aparte de `ADR-0012`.
 
 ## Restricción previa: no perder funcionalidad
 
