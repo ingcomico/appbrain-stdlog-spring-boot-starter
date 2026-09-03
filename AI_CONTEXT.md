@@ -27,9 +27,11 @@ Antes de realizar cambios arquitectonicos, estructurales o que afecten contratos
    - `0007` — logging del evento `CLIENT_DB` para R2DBC (base de datos reactiva, add-on no limitado a apps reactivas).
    - `0008` — soporte de aplicaciones WebFlux (entrada HTTP reactiva) como stack de primera clase. Implementado por fases (todas hechas) en `appbrain.stdlog.webflux`, sin tocar la via servlet.
    - `0010` — enmascaramiento de datos sensibles en el punto unico de emision. Resuelve el hallazgo F-04 de la auditoria.
+   - `0011` — el logging nunca rompe el request, y nunca falla en silencio (`Propuesto`). Resuelve F-07.
+   - `0012` — orden de la instrumentacion de entrada HTTP y paridad servlet/reactivo (`Propuesto`). Resuelve F-08.
    - `0016` — integracion continua y verificacion automatica de la paridad entre lineas. Da cumplimiento a `ADR-0005`.
 
-   Los numeros `0009`, `0011`-`0015` siguen **reservados** para los hallazgos pendientes de la auditoria tecnica (guardas de classpath ya aplicadas, datos sensibles, fail-safety del logging, orden del filtro, deteccion de entorno, acoplamiento a Logback, versionado del esquema JSON). Se numeraron por tema, no por fecha de creacion, asi que el hueco es deliberado.
+   Los numeros `0009` y `0013`-`0015` siguen **reservados** para los hallazgos pendientes de la auditoria tecnica (guardas de classpath ya aplicadas, datos sensibles, fail-safety del logging, orden del filtro, deteccion de entorno, acoplamiento a Logback, versionado del esquema JSON). Se numeraron por tema, no por fecha de creacion, asi que el hueco es deliberado.
 4. Determinar el impacto antes de modificar codigo.
 5. No duplicar decisiones arquitectonicas en archivos especificos de cada agente.
 6. Si existe una contradiccion entre este archivo, el codigo actual y otros documentos, reportarla antes de asumir cual es correcta.
@@ -253,6 +255,14 @@ Los payloads custom pasan por `StdlogEmitter`, quedan bajo la clave `stdlog` y s
 
 ## Principios Arquitectonicos Vigentes
 
+- **El esquema emitido es un contrato: ningun cambio puede dejar de emitir un campo que ya emitia.**
+  `operation`, `route`, `request_id` y la correlacion de tracing son el nucleo del valor de la
+  libreria. Un cambio que mejora un aspecto a costa de degradar uno de esos campos **no es
+  aceptable**: o se encuentra otra forma, o no se hace. Corolarios:
+  - antes de aceptar un supuesto intercambio («ganamos X pero perdemos Y»), hay que **medirlo**;
+    en `ADR-0012` el intercambio que el informe de auditoria daba por hecho resulto ser inexistente;
+  - capturar un fallo y no decir nada **tambien es perder datos**, solo que sin avisar (ver `ADR-0011`);
+  - añadir un campo o un evento donde antes no habia nada no viola el principio: solo lo viola quitar.
 - El starter evita dependencias fuertes innecesarias: Spring MVC y servlet son `provided`; OpenTelemetry se consulta por reflexion.
 - El contrato de configuracion esta centralizado en `StdlogProperties`.
 - La emision esta centralizada en `StdlogEmitter`; los modulos construyen payloads y delegan el logging final.
@@ -318,6 +328,7 @@ Suite ejecutada en `main` (`mvn clean test`): 235 tests, 0 fallos, `BUILD SUCCES
 - Los directorios `release` y `target` no estan indexados ni deben tratarse como fuente estructural del codigo.
 - Existen los ADR `0001`-`0008` y `0016` (estado `Aceptado`; suite de tests en verde). El resto de decisiones ya implementadas siguen sin ADR formal.
 - `ADR-0004` (la documentacion viaja en el mismo commit) **no tiene verificacion automatica**: depende de revision humana. `ADR-0005` si la tiene desde `ADR-0016`.
+- Asimetrias servlet/reactivo pendientes de cerrar, ya decididas en ADR pero **sin implementar**: la proteccion contra fallos de logging solo existe en los modulos reactivos (`ADR-0011`), y los dos filtros de entrada estan en extremos opuestos de su cadena, por lo que los `401`/`403` de Spring Security son invisibles en servlet y visibles en WebFlux (`ADR-0012`). `ADR-0012` cubre ademas una **segunda asimetria**: el evento extra de error se emite en servlet solo si hubo excepcion, mientras que en reactivo se guia por el status, asi que la via servlet se pierde todo 4xx/5xx sin excepcion (un `ResponseEntity.status(403)`, un 404 o un 405 resueltos por Spring MVC). Las condiciones de aceptacion de `ADR-0012` se verificaron con Tomcat y Spring Security reales antes de decidir.
 
 ## Decisiones Pendientes
 
