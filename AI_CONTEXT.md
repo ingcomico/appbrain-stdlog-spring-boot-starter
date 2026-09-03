@@ -18,7 +18,7 @@ Esta rama es la **línea Spring Boot 3** del starter (ver `ADR-0005`). Tiene **p
 | `logstash-logback-encoder` | `9.0` | `8.1` |
 | `logback-spring-stdlog.xml` | provider `pattern` para `stdlog_lib_version`, `stackTrace` sin `nestedField` | `globalCustomFields` + bloque `stackTrace` original (equivalente en salida) |
 | Customizers HTTP saliente | `org.springframework.boot.restclient.RestClientCustomizer` / `RestTemplateCustomizer` (módulo `spring-boot-restclient`) | `org.springframework.boot.web.client.RestClientCustomizer` / `RestTemplateCustomizer` (parte de `spring-boot`) |
-| `EnvironmentPostProcessor` | paquete `org.springframework.boot`; clave `spring.factories` = `org.springframework.boot.EnvironmentPostProcessor` | paquete `org.springframework.boot.env`; clave `spring.factories` = `org.springframework.boot.env.EnvironmentPostProcessor` |
+| `EnvironmentPostProcessor` | paquete `org.springframework.boot`; clave `spring.factories` = `org.springframework.boot.EnvironmentPostProcessor` | paquete `org.springframework.boot.env`; clave `spring.factories` = `org.springframework.boot.env.EnvironmentPostProcessor`. En ambas ramas, `spring.factories` es el **único** mecanismo: el fichero `META-INF/spring/<FQN>` sin sufijo `.imports` es inerte y se eliminó de las dos (ver `ADR-0001`, Riesgos) |
 | Iteración de `HttpHeaders` en `StdlogClientHttpInterceptor` y `StdlogClientHttpPayload` | `headers.headerSet()` | `headers.entrySet()` |
 | Logging de `WebClient` (`ADR-0006`) | `spring-webflux` + `reactor-core` `provided`; filtro añadido vía `BeanPostProcessor` sobre `WebClient.Builder` | idéntico (el `BeanPostProcessor` evita depender del paquete de `WebClientCustomizer`, que difiere entre majors) |
 | Logging de R2DBC (`ADR-0007`) | `io.r2dbc:r2dbc-proxy` + `r2dbc-spi` `provided` | **idéntico** (código agnóstico: `io.r2dbc.*` + `org.slf4j.MDC`) |
@@ -37,7 +37,15 @@ Nada más difiere. El código de negocio (`StdlogEmitter`, `StdlogTraceCorrelati
 - `io.micrometer:context-propagation` en scope `provided` (`ThreadLocalAccessor` de `request_id` para R2DBC en apps WebFlux, `ADR-0008` Fase 2).
 - El jar **no** empaqueta `META-INF/build-info.properties`: la ejecución del goal `build-info` se eliminó (auditoría F-03), porque podía secuestrar el `/actuator/info` del consumidor. La versión de librería se expone por `stdlog-version.properties`.
 - `README.md` documenta coordenadas `...:3.0.0-local` para el flujo de `mvn clean deploy` a `release/`.
+- Trinquete de cobertura (`ADR-0016`): `jacoco:check` en fase `verify`, mínimos de 85 % de líneas y 65 % de ramas. `mvn test` no lo ejecuta.
 - Suite: 235 tests, 0 fallos, verificado en JDK 17 y JDK 25.
+
+## Integración continua (`ADR-0016`)
+
+- `.github/workflows/ci.yml` corre la matriz JDK 17 / 25 también en esta rama, en `push` y en PR dirigidas a ella.
+- `.github/workflows/parity.yml` compara `src/` entre `main` y esta rama contra `.github/branch-parity-allowlist.txt`. **La allowlist se mantiene idéntica en las dos ramas**: es la lista compartida de diferencias legítimas, y modificarla en una sola rama haría fallar la comprobación.
+- Estado al portar `ADR-0016`: 63 de 77 ficheros bajo `src/` idénticos entre ramas, 13 diferencias declaradas.
+- El job de paridad corre sólo en `push`. Su rojo sobre `main` significa que un cambio ya mergeado allí todavía no se ha portado aquí; se resuelve pusheando el porte.
 
 ## Flujo de trabajo en esta rama
 
