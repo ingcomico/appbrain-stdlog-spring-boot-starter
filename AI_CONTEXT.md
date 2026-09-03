@@ -26,6 +26,9 @@ Antes de realizar cambios arquitectonicos, estructurales o que afecten contratos
    - `0006` — logging del evento `CLIENT_HTTP` para `WebClient` (cliente saliente reactivo, solo en apps servlet).
    - `0007` — logging del evento `CLIENT_DB` para R2DBC (base de datos reactiva, add-on no limitado a apps reactivas).
    - `0008` — soporte de aplicaciones WebFlux (entrada HTTP reactiva) como stack de primera clase. Implementado por fases (todas hechas) en `appbrain.stdlog.webflux`, sin tocar la via servlet.
+   - `0016` — integracion continua y verificacion automatica de la paridad entre lineas. Da cumplimiento a `ADR-0005`.
+
+   Los numeros `0009`-`0015` estan **reservados** para los hallazgos pendientes de la auditoria tecnica (guardas de classpath ya aplicadas, datos sensibles, fail-safety del logging, orden del filtro, deteccion de entorno, acoplamiento a Logback, versionado del esquema JSON). Se numeraron por tema, no por fecha de creacion, asi que el hueco es deliberado.
 4. Determinar el impacto antes de modificar codigo.
 5. No duplicar decisiones arquitectonicas en archivos especificos de cada agente.
 6. Si existe una contradiccion entre este archivo, el codigo actual y otros documentos, reportarla antes de asumir cual es correcta.
@@ -292,6 +295,13 @@ Existen tests bajo `src/test/java` para:
 
 Suite ejecutada en `main` (`mvn clean test`): 235 tests, 0 fallos, `BUILD SUCCESS`, verificado en JDK 17 y JDK 25.
 
+### Integracion continua (`ADR-0016`)
+
+- `.github/workflows/ci.yml` — matriz JDK 17 y 25 (Temurin) sobre `push` a las dos ramas permanentes y sobre toda `pull_request` dirigida a ellas. Ejecuta `mvn -B clean verify` y publica el informe de JaCoCo como artefacto.
+- **Trinquete de cobertura**: `jacoco:check` en la fase `verify` con minimos `BUNDLE` de 85 % de lineas y 65 % de ramas (nivel actual redondeado a la baja: 89 % / 68 %). Impide regresiones; no obliga a subir. `mvn test` no lo ejecuta, asi que el ciclo local no cambia.
+- `.github/workflows/parity.yml` — compara `src/` entre `main` y `spring-boot-3.x`. Todo fichero que difiera y no este declarado en `.github/branch-parity-allowlist.txt` hace fallar el job. Estado medido: 63 de 77 ficheros identicos, 13 diferencias declaradas (todas por el major de Spring Boot).
+- El job de paridad corre **solo en `push`**, nunca en `pull_request`: segun `ADR-0005` el porte ocurre despues del merge, asi que su rojo sobre `main` significa "falta portar" (el estado que `ADR-0005` llama "no cerrado"), no "algo se rompio". Vuelve a verde con el push del porte.
+
 ## Limitaciones Actuales
 
 - La entrada HTTP cubre servlet/MVC y WebFlux (`ADR-0008`, todas las fases); los clientes salientes cubiertos son `RestTemplate`/`RestClient`/`WebClient` (HTTP) y JDBC/R2DBC (base de datos).
@@ -303,7 +313,8 @@ Suite ejecutada en `main` (`mvn clean test`): 235 tests, 0 fallos, `BUILD SUCCES
 - La captura de source en HTTP saliente usa stacktrace-walk y depende de `consumerBasePackage`; tiene costo de CPU por llamada cuando se habilita.
 - Bodies, headers y parametros SQL pueden contener datos sensibles; la configuracion segura depende del consumidor.
 - Los directorios `release` y `target` no estan indexados ni deben tratarse como fuente estructural del codigo.
-- Existen los ADR `0001`-`0008` (estado `Aceptado`; suite de tests en verde). El resto de decisiones ya implementadas siguen sin ADR formal.
+- Existen los ADR `0001`-`0008` y `0016` (estado `Aceptado`; suite de tests en verde). El resto de decisiones ya implementadas siguen sin ADR formal.
+- `ADR-0004` (la documentacion viaja en el mismo commit) **no tiene verificacion automatica**: depende de revision humana. `ADR-0005` si la tiene desde `ADR-0016`.
 
 ## Decisiones Pendientes
 

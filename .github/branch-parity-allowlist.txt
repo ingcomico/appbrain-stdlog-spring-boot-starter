@@ -1,0 +1,38 @@
+# Ficheros bajo src/ que LEGÍTIMAMENTE difieren entre `main` (Spring Boot 4) y
+# `spring-boot-3.x` (Spring Boot 3.5). Los comprueba .github/workflows/parity.yml.
+#
+# ADR-0005 exige paridad funcional entre las dos líneas; ADR-0016 la verifica.
+# Cualquier fichero que difiera y no esté aquí rompe el build de paridad.
+#
+# Formato: una ruta por línea, relativa a la raíz del repo. `#` inicia comentario.
+# Añadir una entrada es un cambio de contrato: exige justificar la razón aquí mismo
+# y se revisa en PR como cualquier otro cambio.
+
+# --- Binding Jackson: tools.jackson (3) en main vs com.fasterxml (2) en 3.x ---
+src/main/java/appbrain/stdlog/autoconfig/StdlogAutoConfiguration.java
+src/main/java/appbrain/stdlog/web/ControllerBodyAndOutLoggingFilter.java
+src/test/java/appbrain/stdlog/StdlogTestSupport.java
+src/test/java/appbrain/stdlog/autoconfig/StdlogAutoConfigurationTest.java
+src/test/java/appbrain/stdlog/web/ControllerBodyAndOutLoggingFilterBehaviorTest.java
+src/test/java/appbrain/stdlog/web/ControllerBodyAndOutLoggingFilterTest.java
+
+# --- Paquete de los customizers HTTP salientes ---
+# main: org.springframework.boot.restclient.* (módulo spring-boot-restclient)
+# 3.x : org.springframework.boot.web.client.* (parte de spring-boot)
+src/main/java/appbrain/stdlog/autoconfig/StdlogRestClientAutoConfiguration.java
+src/test/java/appbrain/stdlog/autoconfig/StdlogRestClientAutoConfigurationTest.java
+
+# --- Iteración de HttpHeaders: headerSet() en Spring 7 vs entrySet() en Spring 6 ---
+src/main/java/appbrain/stdlog/restclient/StdlogClientHttpInterceptor.java
+src/main/java/appbrain/stdlog/restclient/StdlogClientHttpPayload.java
+
+# --- EnvironmentPostProcessor: cambia el paquete y la clave de spring.factories ---
+# main: org.springframework.boot.EnvironmentPostProcessor
+# 3.x : org.springframework.boot.env.EnvironmentPostProcessor
+src/main/java/appbrain/stdlog/autoconfig/StdlogVersionEnvironmentPostProcessor.java
+src/main/resources/META-INF/spring.factories
+
+# --- Salida JSON: logstash-logback-encoder 9 (main) vs 8.1 (3.x), ver ADR-0003 ---
+# main: provider `pattern` para stdlog_lib_version, stackTrace sin nestedField
+# 3.x : globalCustomFields + bloque stackTrace original (equivalente en salida)
+src/main/resources/stdlog/logback-spring-stdlog.xml

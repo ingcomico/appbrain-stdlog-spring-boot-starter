@@ -1,0 +1,53 @@
+name: CI
+
+# ADR-0016. Cubre la afirmación que repiten los ADR y AI_CONTEXT.md:
+# "suite verde en JDK 17 y JDK 25". El artefacto conserva bytecode 17 (<release>17),
+# así que la matriz comprueba el rango de JDK soportado para la build, no el target.
+on:
+  push:
+    branches: [main, spring-boot-3.x]
+  pull_request:
+    branches: [main, spring-boot-3.x]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build · JDK ${{ matrix.java }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '25']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+
+      # verify, no test: es la fase donde corre el trinquete de cobertura (jacoco:check).
+      - name: Build y tests
+        run: mvn -B --no-transfer-progress clean verify
+
+      - name: Publicar informe de cobertura
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-jdk${{ matrix.java }}
+          path: target/site/jacoco/
+          if-no-files-found: warn
+
+      - name: Publicar informes de tests fallidos
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-jdk${{ matrix.java }}
+          path: target/surefire-reports/
+          if-no-files-found: ignore

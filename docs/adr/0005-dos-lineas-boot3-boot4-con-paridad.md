@@ -113,3 +113,4 @@ Reglas derivadas:
 
 - Sustituye: la regla de `ADR-0001` de que la línea Boot 3 se congela y no recibe features. El resto de `ADR-0001` (la migración de `main` a Boot 4) sigue vigente.
 - Relacionado con: `ADR-0002` y `ADR-0003` (las capacidades que se mantienen en paridad), `ADR-0004` (cómo se documenta cada porte).
+- **Verificado por `ADR-0016`**: la paridad funcional que este ADR exige deja de depender de disciplina y pasa a comprobarse en CI, comparando `src/` entre las dos ramas contra una allowlist declarada de diferencias legítimas. La consecuencia negativa que este ADR anotaba —«si un cambio no se porta, las líneas divergen en silencio»— queda mitigada: la divergencia deja de ser silenciosa.

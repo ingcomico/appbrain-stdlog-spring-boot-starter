@@ -1,0 +1,98 @@
+name: Paridad entre líneas
+
+# ADR-0016. Verifica la paridad funcional que exige ADR-0005 comparando el
+# contenido de src/ entre las dos ramas permanentes.
+#
+# SÓLO en push, nunca en pull_request: según ADR-0005 el porte a spring-boot-3.x
+# ocurre DESPUÉS del merge, así que una PR no puede satisfacer la paridad. Este job
+# en rojo sobre main significa "este cambio todavía no está portado" — que es
+# exactamente el estado que ADR-0005 define como "no cerrado". Vuelve a verde con
+# el push del porte.
+on:
+  push:
+    branches: [main, spring-boot-3.x]
+  workflow_dispatch:
+
+concurrency:
+  group: parity
+  cancel-in-progress: true
+
+jobs:
+  parity:
+    name: main ↔ spring-boot-3.x
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Comparar src/ entre las dos ramas
+        run: |
+          set -euo pipefail
+
+          git fetch --quiet origin main spring-boot-3.x
+
+          ALLOWLIST=.github/branch-parity-allowlist.txt
+          if [ ! -f "$ALLOWLIST" ]; then
+            echo "::error::Falta $ALLOWLIST (lo exige ADR-0016)."
+            exit 1
+          fi
+
+          # Rutas declaradas como diferencias legítimas, sin comentarios ni vacías.
+          sed -e 's/#.*//' -e 's/[[:space:]]*$//' "$ALLOWLIST" | grep -v '^$' | sort -u > /tmp/allowed.txt
+
+          git diff --name-only origin/main origin/spring-boot-3.x -- src/ | sort -u > /tmp/differ.txt
+          comm -23 /tmp/differ.txt /tmp/allowed.txt > /tmp/unexpected.txt
+
+          total=$(git ls-tree -r origin/main --name-only -- src/ | wc -l | tr -d ' ')
+          differ=$(wc -l < /tmp/differ.txt | tr -d ' ')
+          allowed=$(wc -l < /tmp/allowed.txt | tr -d ' ')
+          unexpected=$(wc -l < /tmp/unexpected.txt | tr -d ' ')
+
+          {
+            echo "## Paridad \`main\` ↔ \`spring-boot-3.x\`"
+            echo
+            echo "| | |"
+            echo "|---|---:|"
+            echo "| Ficheros bajo \`src/\` en \`main\` | $total |"
+            echo "| Idénticos entre ramas | $((total - differ)) |"
+            echo "| Diferencias declaradas en la allowlist | $allowed |"
+            echo "| **Diferencias no declaradas** | **$unexpected** |"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Entradas de la allowlist que ya no difieren: ruido a limpiar, no un fallo.
+          if comm -13 /tmp/differ.txt /tmp/allowed.txt | grep -q .; then
+            {
+              echo "### Entradas obsoletas en la allowlist"
+              echo
+              echo "Ya no difieren entre ramas; conviene quitarlas:"
+              echo
+              comm -13 /tmp/differ.txt /tmp/allowed.txt | sed 's/^/- `/;s/$/`/'
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "$unexpected" -eq 0 ]; then
+            echo "Paridad OK: $((total - differ)) de $total ficheros idénticos, $allowed diferencias declaradas."
+            echo "Paridad verificada." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "### Diferencias no declaradas"
+            echo
+            echo "Estos ficheros difieren entre las dos ramas y no están en \`.github/branch-parity-allowlist.txt\`:"
+            echo
+            sed 's/^/- `/;s/$/`/' /tmp/unexpected.txt
+            echo
+            echo "Causa habitual: un cambio mergeado en \`main\` que todavía no se ha portado"
+            echo "a \`spring-boot-3.x\` (ADR-0005 exige portarlo inmediatamente tras el merge)."
+            echo "Si la diferencia es legítima por la versión de Spring Boot, declárala en la"
+            echo "allowlist con su razón."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::error::$unexpected fichero(s) difieren sin estar declarados en la allowlist."
+          sed 's/^/  /' /tmp/unexpected.txt
+          exit 1
