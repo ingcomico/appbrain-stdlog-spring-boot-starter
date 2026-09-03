@@ -146,6 +146,18 @@ class StdlogWebFilterTest {
                 "los CONTROLLER_HTTP (INFO) deben suprimirse en un path excluido");
     }
 
+    @Test
+    void shouldSuppressInfoEventsForStdlogExcludedHandler() {
+        appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
+
+        client(props()).get().uri("/internal/ping").exchange().expectStatus().isOk();
+
+        assertTrue(appender.list.stream()
+                        .map(StdlogTestSupport::stdlogPayload)
+                        .noneMatch(p -> "CONTROLLER_HTTP".equals(p.get("event"))),
+                "un handler @StdlogExcluded no debe emitir CONTROLLER_HTTP a nivel INFO");
+    }
+
     // ---- helpers ----
 
     private static StdlogProperties props() {
@@ -183,6 +195,12 @@ class StdlogWebFilterTest {
         @GetMapping("/health/live")
         Mono<String> health() {
             return Mono.just("UP");
+        }
+
+        @GetMapping("/internal/ping")
+        @appbrain.stdlog.StdlogExcluded
+        Mono<String> internal() {
+            return Mono.just("pong");
         }
     }
 }

@@ -373,6 +373,12 @@ nivel de método (excluye solo ese endpoint). Se resuelve en
 filtro, y soporta anotaciones compuestas/meta-anotadas (por ejemplo, tu propio
 `@InternalEndpoint` meta-anotado con `@StdlogExcluded`).
 
+En **WebFlux** la anotación también funciona: `StdlogWebFilter` resuelve
+`@StdlogExcluded` desde el `HandlerMethod` tras la cadena (mismo `AnnotatedElementUtils`).
+Como el handler se conoce recién al final del request, la exclusión por anotación
+sólo suprime `CONTROLLER_HTTP`/error de ese endpoint; los `CLIENT_*` aguas abajo ya
+se emitieron. Para silenciar también los `CLIENT_*`, usá exclusión por path.
+
 ### 5.6 Aplicaciones WebFlux (entrada reactiva)
 
 En una aplicación **WebFlux** (Netty, controllers reactivos), el starter registra
@@ -397,10 +403,32 @@ emite el **mismo `CONTROLLER_HTTP IN/OUT`** y el **mismo evento extra de error**
     `reactor.core.publisher.Hooks.enableAutomaticContextPropagation()` (switch global
     de la app; el starter no lo hace). Con eso, `request_id` llega al `CLIENT_DB`.
     `operation` no llega al `CLIENT_DB` en WebFlux.
-- **Evento de error**: si un `WebExceptionHandler` de WebFlux convirtió la excepción
-  en respuesta antes de llegar al filtro, el evento sale con el status y un mensaje
-  sintético (la excepción real es best-effort). Aplicaciones servlet no se ven
-  afectadas: los dos stacks son mutuamente excluyentes.
+- **Evento de error de alta fidelidad**: el starter registra
+  `StdlogWebExceptionHandler` (`WebExceptionHandler`, `@Order(HIGHEST_PRECEDENCE)`)
+  que captura la excepción real y la guarda en un atributo del exchange **sin
+  consumirla** (la re-propaga para que el manejo normal de WebFlux siga su curso).
+  `StdlogWebFilter` la lee al cerrar el request, así el evento de error lleva `type`,
+  `message` y `app_trace` reales aunque `ExceptionHandlingWebHandler` ya haya
+  convertido la excepción en respuesta. `doOnError` queda como respaldo.
+- **Eventos custom desde código reactivo**: `StdlogCustom` es una fachada estática
+  que lee el MDC, que en una cadena reactiva puede estar vacío. Para código reactivo
+  usá `StdlogCustomReactive` (paquete `appbrain.stdlog.webflux`): cada método
+  devuelve un `Mono<Void>` que lee la correlación del Reactor Context y la restaura
+  en el MDC alrededor de la emisión. Se compone con tu cadena:
+
+  ```java
+  import appbrain.stdlog.webflux.StdlogCustomReactive;
+
+  return pagosService.pagar(req)
+          .flatMap(res -> StdlogCustomReactive
+                  .success("PAGO_OK", Map.of("id", res.id()))
+                  .thenReturn(res));
+  ```
+
+  Mismos métodos que `StdlogCustom` (`info/warn/debug/success/failure/error`);
+  `StdlogCustom` no se modifica.
+
+Aplicaciones servlet no se ven afectadas: los dos stacks son mutuamente excluyentes.
 
 ---
 
@@ -434,6 +462,10 @@ StdlogCustom.error("UPSTREAM_CALL", "TIMEOUT", Map.of("peer", "users"), exceptio
 
 > `operation` y `request_id` aparecen si existe MDC (por ejemplo dentro de un request HTTP).
 > `trace_id` y `span_id` aparecen automáticamente cuando hay contexto de tracing activo.
+
+> **WebFlux:** en código reactivo el MDC suele estar vacío. Usá `StdlogCustomReactive`
+> (paquete `appbrain.stdlog.webflux`), que lee la correlación del Reactor Context.
+> Ver [5.6](#56-aplicaciones-webflux-entrada-reactiva).
 
 ---
 

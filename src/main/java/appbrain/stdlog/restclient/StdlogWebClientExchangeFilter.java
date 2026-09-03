@@ -4,7 +4,7 @@ import appbrain.stdlog.config.StdlogLevel;
 import appbrain.stdlog.config.StdlogProperties;
 import appbrain.stdlog.core.StdlogEmitter;
 import appbrain.stdlog.core.StdlogModeResolver;
-import appbrain.stdlog.core.StdlogReactorContext;
+import appbrain.stdlog.core.StdlogReactiveCorrelation;
 import appbrain.stdlog.util.StdlogCallerResolver;
 import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
@@ -75,13 +75,10 @@ public class StdlogWebClientExchangeFilter implements ExchangeFilterFunction {
         // Correlación: MDC primero (app servlet + .block()); si está vacío, Reactor Context
         // (app WebFlux — lo puebla StdlogWebFilter). Ver ADR-0008 Fase 2.
         Map<String, String> mdc = MDC.getCopyOfContextMap();
-        String requestId = firstNonBlank(value(mdc, "request_id"),
-                StdlogReactorContext.get(ctxView, StdlogReactorContext.REQUEST_ID));
-        String operation = firstNonBlank(value(mdc, "operation"),
-                firstNonBlank(StdlogReactorContext.get(ctxView, StdlogReactorContext.OPERATION),
-                        operationFromExchange(ctxView)));
+        String requestId = firstNonBlank(value(mdc, "request_id"), StdlogReactiveCorrelation.requestId(ctxView));
+        String operation = firstNonBlank(value(mdc, "operation"), StdlogReactiveCorrelation.operation(ctxView));
         boolean excluded = mdc != null && mdc.containsKey(StdlogEmitter.MDC_EXCLUDED)
-                || StdlogReactorContext.isExcluded(ctxView);
+                || StdlogReactiveCorrelation.excluded(ctxView);
 
         Map<String, String> mdcForEmit = (mdc != null && !mdc.isEmpty()) ? mdc : null;
         if (mdcForEmit == null && (requestId != null || operation != null || excluded)) {
@@ -241,27 +238,6 @@ public class StdlogWebClientExchangeFilter implements ExchangeFilterFunction {
 
     private static String value(Map<String, String> mdc, String key) {
         return mdc == null ? null : mdc.get(key);
-    }
-
-    /**
-     * En una app WebFlux, el {@code ServerWebExchange} está en el Reactor Context (lo pone
-     * {@code StdlogWebFilter}). Sus atributos {@code HandlerMapping.*} ya están poblados cuando
-     * el controller hace la llamada saliente, así que se puede resolver {@code operation}
-     * de forma perezosa aquí. Devuelve {@code null} fuera de WebFlux o si no hay handler.
-     */
-    private static String operationFromExchange(ContextView ctxView) {
-        try {
-            return org.springframework.web.filter.reactive.ServerWebExchangeContextFilter.getExchange(ctxView)
-                    .map(ex -> ex.getAttribute(org.springframework.web.reactive.HandlerMapping.BEST_MATCHING_HANDLER_ATTRIBUTE))
-                    .filter(h -> h instanceof org.springframework.web.method.HandlerMethod)
-                    .map(h -> {
-                        org.springframework.web.method.HandlerMethod hm = (org.springframework.web.method.HandlerMethod) h;
-                        return hm.getBeanType().getSimpleName() + "#" + hm.getMethod().getName();
-                    })
-                    .orElse(null);
-        } catch (RuntimeException | LinkageError ignored) {
-            return null;
-        }
     }
 
     private static String firstNonBlank(String a, String b) {

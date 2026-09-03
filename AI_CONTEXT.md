@@ -6,7 +6,7 @@ Esta rama es la **línea Spring Boot 3** del starter (ver `ADR-0005`). Tiene **p
 
 - La descripción completa de arquitectura, paquetes, contratos públicos, flujo principal, principios y limitaciones vive en `AI_CONTEXT.md` de la rama `main` y **aplica igual aquí**, salvo las diferencias de plataforma listadas abajo.
 - Para consultarla sin cambiar de rama: `git show main:AI_CONTEXT.md`.
-- Los ADR en `docs/adr/` son los mismos que en `main`. `ADR-0001`, `0002`, `0003` y `0006` llevan una "Nota de rama" al inicio con lo que difiere en esta línea. `ADR-0007` (R2DBC) y `ADR-0008` (soporte WebFlux; Fases 1 y 2 hechas, Fase 3 pendiente) aplican sin diferencias.
+- Los ADR en `docs/adr/` son los mismos que en `main`. `ADR-0001`, `0002`, `0003` y `0006` llevan una "Nota de rama" al inicio con lo que difiere en esta línea. `ADR-0007` (R2DBC) y `ADR-0008` (soporte WebFlux; **todas las fases hechas**) aplican sin diferencias.
 
 ## Diferencias de esta rama respecto a `main`
 
@@ -22,9 +22,9 @@ Esta rama es la **línea Spring Boot 3** del starter (ver `ADR-0005`). Tiene **p
 | Iteración de `HttpHeaders` en `StdlogClientHttpInterceptor` y `StdlogClientHttpPayload` | `headers.headerSet()` | `headers.entrySet()` |
 | Logging de `WebClient` (`ADR-0006`) | `spring-webflux` + `reactor-core` `provided`; filtro añadido vía `BeanPostProcessor` sobre `WebClient.Builder` | idéntico (el `BeanPostProcessor` evita depender del paquete de `WebClientCustomizer`, que difiere entre majors) |
 | Logging de R2DBC (`ADR-0007`) | `io.r2dbc:r2dbc-proxy` + `r2dbc-spi` `provided` | **idéntico** (código agnóstico: `io.r2dbc.*` + `org.slf4j.MDC`) |
-| Entrada WebFlux (`ADR-0008` Fases 1-2) | `spring-webflux` + `io.micrometer:context-propagation` `provided`; `StdlogWebFilter`, lectura del Reactor Context en `StdlogWebClientExchangeFilter`, `ThreadLocalAccessor` de `request_id` | **idéntico** (usa API de Spring 6/7 común: `WebFilter`, `HandlerMapping`, decoradores reactivos, `Mono.deferContextual`) |
+| Entrada WebFlux (`ADR-0008`, todas las fases) | `spring-webflux` + `io.micrometer:context-propagation` `provided`; `StdlogWebFilter`, `StdlogWebExceptionHandler`, `StdlogCustomReactive`, `StdlogReactiveCorrelation`, lectura del Reactor Context en `StdlogWebClientExchangeFilter`, `ThreadLocalAccessor` de `request_id` | **idéntico** (usa API de Spring 6/7 común: `WebFilter`, `WebExceptionHandler`, `HandlerMapping`, `AnnotatedElementUtils`, decoradores reactivos, `Mono.deferContextual`) |
 
-Nada más difiere. El código de negocio (`StdlogEmitter`, `StdlogTraceCorrelation`, builders de payload, `StdlogProperties`, filtros, interceptores, listener JDBC, `StdlogWebClientExchangeFilter`, `StdlogR2dbcQueryListener`, `StdlogWebFilter`) es funcionalmente idéntico.
+Nada más difiere. El código de negocio (`StdlogEmitter`, `StdlogTraceCorrelation`, builders de payload, `StdlogProperties`, filtros, interceptores, listener JDBC, `StdlogWebClientExchangeFilter`, `StdlogR2dbcQueryListener`, `StdlogWebFilter`, `StdlogWebExceptionHandler`, `StdlogCustomReactive`, `StdlogReactiveCorrelation`) es funcionalmente idéntico.
 
 ## Plataforma y build (esta rama)
 
@@ -34,7 +34,7 @@ Nada más difiere. El código de negocio (`StdlogEmitter`, `StdlogTraceCorrelati
 - `io.r2dbc:r2dbc-proxy` y `io.r2dbc:r2dbc-spi` en scope `provided` (solo para el logging de R2DBC, `ADR-0007`).
 - `io.micrometer:context-propagation` en scope `provided` (`ThreadLocalAccessor` de `request_id` para R2DBC en apps WebFlux, `ADR-0008` Fase 2).
 - `README.md` documenta coordenadas `...:3.0.0-local` para el flujo de `mvn clean deploy` a `release/`.
-- Suite: 222 tests, 0 fallos, verificado en JDK 17 y JDK 25.
+- Suite: 228 tests, 0 fallos, verificado en JDK 17 y JDK 25.
 
 ## Flujo de trabajo en esta rama
 
