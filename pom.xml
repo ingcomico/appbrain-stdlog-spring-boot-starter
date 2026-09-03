@@ -122,6 +122,19 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- Contenedor servlet y Spring Security reales, solo para el test de orden de filtros
+             que exige ADR-0012: los mocks no parsean bodies de formulario como un contenedor. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Test del logging R2DBC contra una base H2 real en memoria. Ver ADR-0007. -->
         <dependency>
             <groupId>io.r2dbc</groupId>

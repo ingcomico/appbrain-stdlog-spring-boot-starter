@@ -285,6 +285,32 @@ Incluye:
 | `allowed-content-types` | Allowlist de content-types para capturar body (recomendado JSON y texto). Una lista vacía deshabilita toda captura de body, aunque `log-request-body` o `log-response-body` sea `true`. Default: `[application/json, text/plain, application/*+json]` |
 | `webflux.enabled` | Si `false`, no se instrumenta la entrada HTTP reactiva (apps servlet no se ven afectadas). Default `true`. Ver [5.6](#56-aplicaciones-webflux-entrada-reactiva) |
 
+### 5.4.1 Qué se loguea cuando el request no llega al controller
+
+Desde **ADR-0012** el filtro se registra **por fuera de la cadena de Spring Security**, así que
+también se registran los requests que nunca llegan a un handler:
+
+| Caso | Antes | Ahora |
+|---|---|---|
+| `401`/`403` de Spring Security | sin ningún evento | `CONTROLLER_HTTP` IN/OUT + evento de error |
+| Rechazo de CORS | sin ningún evento | igual que arriba |
+| `ResponseEntity.status(403)` de un controller | sólo `OUT` | `OUT` + evento de error |
+| `404`/`405` resueltos por Spring MVC | sólo `OUT` | `OUT` + evento de error |
+
+Dos aclaraciones sobre esos eventos:
+
+- **`route` se rellena** con `método + URI` cuando no hay patrón de `HandlerMapping`.
+- **`operation` no aparece**, y es correcto: el request nunca seleccionó un handler, así que no
+  hay operación que nombrar. En un request normal `operation` sigue exactamente igual que antes.
+
+El evento extra de error ya no depende de que haya una excepción, sino del **status final**: que
+la aplicación no falle no significa que no haya nada que registrar. Cuando hay excepción se
+adjunta con su `app_trace` y su stack trace; cuando no, el nodo `error` lo indica.
+
+> **Cambio de volumen:** un endpoint público bajo un ataque de credenciales pasará a generar
+> eventos que antes no existían. `excluded-path-patterns` reduce el ruido INFO, pero los
+> `WARN`/`ERROR` nunca se suprimen (ver [5.5](#55-exclusión-de-logging-regla-general)).
+
 ### 5.5 Exclusión de logging: regla general
 
 Hay dos formas de excluir tráfico del logging — por path (5.5.1) o por clase/método
