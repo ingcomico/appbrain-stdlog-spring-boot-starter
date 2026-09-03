@@ -282,6 +282,9 @@ public class StdlogProperties {
          */
         private String consumerBasePackage;
 
+        /** Configuración específica de la vía {@code WebClient} (cliente saliente reactivo). Ver ADR-0006. */
+        private final Webclient webclient = new Webclient();
+
         public boolean isEnabled() { return enabled; }
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
 
@@ -329,6 +332,37 @@ public class StdlogProperties {
 
         public String getConsumerBasePackage() { return consumerBasePackage; }
         public void setConsumerBasePackage(String consumerBasePackage) { this.consumerBasePackage = consumerBasePackage; }
+
+        public Webclient getWebclient() { return webclient; }
+
+        /**
+         * Ajustes de la instrumentación de {@code WebClient}. Comparte el resto de la
+         * configuración de {@code stdlog.restclient} (niveles, {@code maxBodyChars},
+         * allowlists de headers, {@code logOnlyOnFailureInProd}, {@code captureCallId},
+         * {@code captureSource}).
+         */
+        public static class Webclient {
+
+            /**
+             * Si {@code false}, no se instrumenta {@code WebClient} (pero {@code RestTemplate}
+             * y {@code RestClient} siguen instrumentados). Default: {@code true}.
+             */
+            private boolean enabled = true;
+
+            /**
+             * Tope duro de bytes que se bufferizan por body (request o response) para poder
+             * loguearlo. Protege la memoria ante respuestas grandes o streaming: al superarlo
+             * se corta la captura y el body se marca como truncado. No afecta a la app, que
+             * recibe el body completo. Default: {@code 262144} (256 KiB). {@code 0} = sin tope.
+             */
+            private int maxCaptureBytes = 256 * 1024;
+
+            public boolean isEnabled() { return enabled; }
+            public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+            public int getMaxCaptureBytes() { return maxCaptureBytes; }
+            public void setMaxCaptureBytes(int maxCaptureBytes) { this.maxCaptureBytes = maxCaptureBytes; }
+        }
     }
 
     /**
