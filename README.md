@@ -388,15 +388,15 @@ emite el **mismo `CONTROLLER_HTTP IN/OUT`** y el **mismo evento extra de error**
   `maxRequestBodyBytes`/`maxResponseBodyBytes`.
 - Para apagar sólo esta vía: `stdlog.controller.webflux.enabled: false`.
 - **Correlación con el request** en una app WebFlux:
-  - `CLIENT_HTTP` (`WebClient`): funciona — el filtro lee `request_id` del Reactor
-    Context que puebla este `WebFilter` (misma cadena reactiva, sin context-propagation).
-  - `CLIENT_DB` (R2DBC): `r2dbc-proxy` no expone el Reactor Context a sus listeners,
-    así que `request_id`/`operation` en `CLIENT_DB` requieren que el consumidor active
-    Micrometer context-propagation (`Hooks.enableAutomaticContextPropagation()` +
-    un accessor de MDC). El starter no activa el hook (es global de la app). Fase
-    pendiente de ADR-0008.
-  - `operation`/`route` en los clientes salientes: hoy sólo `request_id` viaja por
-    el Context; `operation` puede faltar en WebFlux (fase pendiente).
+  - `CLIENT_HTTP` (`WebClient`): funciona sin configuración — el filtro lee
+    `request_id` y `operation` del Reactor Context que puebla este `WebFilter`
+    (misma cadena reactiva).
+  - `CLIENT_DB` (R2DBC): `r2dbc-proxy` no expone el Reactor Context a sus listeners.
+    El starter **provee y registra** un `ThreadLocalAccessor` para `request_id`; para
+    activarlo, el consumidor debe llamar una vez a
+    `reactor.core.publisher.Hooks.enableAutomaticContextPropagation()` (switch global
+    de la app; el starter no lo hace). Con eso, `request_id` llega al `CLIENT_DB`.
+    `operation` no llega al `CLIENT_DB` en WebFlux.
 - **Evento de error**: si un `WebExceptionHandler` de WebFlux convirtió la excepción
   en respuesta antes de llegar al filtro, el evento sale con el status y un mensaje
   sintético (la excepción real es best-effort). Aplicaciones servlet no se ven
@@ -584,7 +584,7 @@ public WebClient webClient(WebClient.Builder builder) {
 - **Correlación** (`request_id`, `operation`): MDC primero (app servlet + `.block()`);
   si el MDC está vacío, del **Reactor Context** (app WebFlux — lo puebla el
   `WebFilter` de entrada, ver [5.6](#56-aplicaciones-webflux-entrada-reactiva)).
-  Hoy sólo `request_id` viaja por el Context; `operation` puede faltar en WebFlux.
+  `operation` se resuelve del `ServerWebExchange` presente en el Context.
 - El body se captura sólo con `logging.level.stdlog=DEBUG`, bufferizado hasta
   `stdlog.restclient.webclient.max-capture-bytes` (256 KiB por defecto); tu código
   recibe siempre el body completo.

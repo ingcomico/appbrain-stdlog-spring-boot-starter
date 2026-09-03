@@ -12,6 +12,11 @@ import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.mock.http.client.reactive.MockClientHttpRequest;
+import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
+import org.springframework.mock.web.server.MockServerWebExchange;
+import org.springframework.web.filter.reactive.ServerWebExchangeContextFilter;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.reactive.HandlerMapping;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.ExchangeFunction;
 import org.springframework.web.reactive.function.client.ExchangeStrategies;
@@ -220,6 +225,32 @@ class StdlogWebClientExchangeFilterTest {
         Map<String, Object> payload = onlyPayload();
         assertEquals("ctx-req-1", payload.get("request_id"));
         assertEquals("ReactiveCtrl#get", payload.get("operation"));
+    }
+
+    @Test
+    void shouldResolveOperationFromServerWebExchangeInReactorContext() throws Exception {
+        // ADR-0008 Fase 2b: StdlogWebFilter pone el ServerWebExchange en el Context;
+        // el filtro resuelve operation de forma perezosa desde sus atributos HandlerMapping.
+        appender = StdlogTestSupport.attachStdlogAppender(Level.TRACE);
+        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/x"));
+        HandlerMethod hm = new HandlerMethod(new SampleController(), SampleController.class.getMethod("handle"));
+        exchange.getAttributes().put(HandlerMapping.BEST_MATCHING_HANDLER_ATTRIBUTE, hm);
+
+        client(props(), req -> Mono.just(json(200, "{}")))
+                .get().uri("https://api.example.com/ok").retrieve().bodyToMono(String.class)
+                .contextWrite(ctx -> ctx.put("request_id", "r1")
+                        .put(ServerWebExchangeContextFilter.EXCHANGE_CONTEXT_ATTRIBUTE, exchange))
+                .block();
+
+        Map<String, Object> p = onlyPayload();
+        assertEquals("r1", p.get("request_id"));
+        assertEquals("SampleController#handle", p.get("operation"));
+    }
+
+    static class SampleController {
+        public String handle() {
+            return "ok";
+        }
     }
 
     @Test

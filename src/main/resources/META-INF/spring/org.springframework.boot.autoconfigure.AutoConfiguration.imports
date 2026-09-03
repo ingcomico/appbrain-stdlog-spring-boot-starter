@@ -1,6 +1,7 @@
 appbrain.stdlog.autoconfig.StdlogAutoConfiguration
 appbrain.stdlog.autoconfig.StdlogWebMvcAutoConfiguration
 appbrain.stdlog.autoconfig.StdlogWebFluxAutoConfiguration
+appbrain.stdlog.autoconfig.StdlogReactorContextPropagationAutoConfiguration
 appbrain.stdlog.autoconfig.StdlogRestClientAutoConfiguration
 appbrain.stdlog.autoconfig.StdlogWebClientAutoConfiguration
 appbrain.stdlog.autoconfig.StdlogJdbcAutoConfiguration
