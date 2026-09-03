@@ -7,18 +7,17 @@ import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.web.reactive.function.client.WebClient;
 
 /**
  * Auto-configuración del logging de {@code WebClient} (cliente HTTP saliente reactivo).
- * Ver ADR-0006.
+ * Ver ADR-0006 y ADR-0008 (Fase 2).
  *
- * <p>El starter sigue siendo servlet/MVC: esta auto-config sólo se activa en aplicaciones
- * servlet ({@code @ConditionalOnWebApplication(SERVLET)}) que además tengan {@code WebClient}
- * en el classpath ({@code @ConditionalOnClass}). No cubre aplicaciones WebFlux completas.</p>
+ * <p>Se activa siempre que {@code WebClient} esté en el classpath ({@code @ConditionalOnClass}),
+ * en apps servlet, WebFlux o no-web. En apps WebFlux, la correlación (`request_id`) de las
+ * llamadas salientes se toma del Reactor Context que puebla {@code StdlogWebFilter}.</p>
  *
  * <p>Registra {@link StdlogWebClientExchangeFilter} y lo añade a cualquier
  * {@link WebClient.Builder} del contexto mediante un {@link BeanPostProcessor} — así funciona
@@ -31,7 +30,6 @@ import org.springframework.web.reactive.function.client.WebClient;
 @AutoConfiguration
 @EnableConfigurationProperties(StdlogProperties.class)
 @ConditionalOnClass(WebClient.class)
-@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @ConditionalOnProperty(prefix = "stdlog.restclient", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class StdlogWebClientAutoConfiguration {
 

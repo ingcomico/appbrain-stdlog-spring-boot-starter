@@ -387,11 +387,16 @@ emite el **mismo `CONTROLLER_HTTP IN/OUT`** y el **mismo evento extra de error**
 - Captura de body con decoradores reactivos, acotada por
   `maxRequestBodyBytes`/`maxResponseBodyBytes`.
 - Para apagar sólo esta vía: `stdlog.controller.webflux.enabled: false`.
-- **Correlación de `CLIENT_DB`/`CLIENT_HTTP` con el request** en una app WebFlux:
-  hoy requiere que el consumidor active Micrometer context-propagation
-  (`Hooks.enableAutomaticContextPropagation()`). El starter no lo activa (es un
-  switch global de la aplicación). Sin eso, esos eventos se emiten sin
-  `request_id`/`operation` (siguientes fases de ADR-0008 lo mejoran).
+- **Correlación con el request** en una app WebFlux:
+  - `CLIENT_HTTP` (`WebClient`): funciona — el filtro lee `request_id` del Reactor
+    Context que puebla este `WebFilter` (misma cadena reactiva, sin context-propagation).
+  - `CLIENT_DB` (R2DBC): `r2dbc-proxy` no expone el Reactor Context a sus listeners,
+    así que `request_id`/`operation` en `CLIENT_DB` requieren que el consumidor active
+    Micrometer context-propagation (`Hooks.enableAutomaticContextPropagation()` +
+    un accessor de MDC). El starter no activa el hook (es global de la app). Fase
+    pendiente de ADR-0008.
+  - `operation`/`route` en los clientes salientes: hoy sólo `request_id` viaja por
+    el Context; `operation` puede faltar en WebFlux (fase pendiente).
 - **Evento de error**: si un `WebExceptionHandler` de WebFlux convirtió la excepción
   en respuesta antes de llegar al filtro, el evento sale con el status y un mensaje
   sintético (la excepción real es best-effort). Aplicaciones servlet no se ven
@@ -563,9 +568,9 @@ Sin este registro, `CLIENT_HTTP` no aparece aunque `stdlog.restclient.enabled=tr
 
 ### 7.6 Integración con `WebClient`
 
-En aplicaciones **servlet** que además usan `WebClient` como cliente HTTP
-saliente, el starter registra un `ExchangeFilterFunction` y lo añade
-automáticamente a cualquier `WebClient.Builder` del contexto. El evento
+Si `WebClient` está en el classpath, el starter registra un
+`ExchangeFilterFunction` y lo añade automáticamente a cualquier
+`WebClient.Builder` del contexto — en apps servlet, WebFlux o no-web. El evento
 `CLIENT_HTTP` tiene el mismo formato y usa la misma configuración
 `stdlog.restclient.*` que `RestTemplate`/`RestClient`.
 
@@ -576,14 +581,14 @@ public WebClient webClient(WebClient.Builder builder) {
 }
 ```
 
-- `request_id` y `operation` se toman del MDC del hilo de request (el caso normal
-  cuando la llamada se resuelve con `.block()`); en un pipeline totalmente
-  reactivo sin context-propagation esos campos se omiten.
+- **Correlación** (`request_id`, `operation`): MDC primero (app servlet + `.block()`);
+  si el MDC está vacío, del **Reactor Context** (app WebFlux — lo puebla el
+  `WebFilter` de entrada, ver [5.6](#56-aplicaciones-webflux-entrada-reactiva)).
+  Hoy sólo `request_id` viaja por el Context; `operation` puede faltar en WebFlux.
 - El body se captura sólo con `logging.level.stdlog=DEBUG`, bufferizado hasta
   `stdlog.restclient.webclient.max-capture-bytes` (256 KiB por defecto); tu código
   recibe siempre el body completo.
 - Para apagar sólo esta vía: `stdlog.restclient.webclient.enabled: false`.
-- Aplicaciones WebFlux completas (no sólo el cliente) quedan fuera de alcance.
 
 **Caso manual — `WebClient` construido sin un `WebClient.Builder` del contexto:**
 
