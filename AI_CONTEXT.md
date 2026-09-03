@@ -6,7 +6,7 @@ Esta rama es la **línea Spring Boot 3** del starter (ver `ADR-0005`). Tiene **p
 
 - La descripción completa de arquitectura, paquetes, contratos públicos, flujo principal, principios y limitaciones vive en `AI_CONTEXT.md` de la rama `main` y **aplica igual aquí**, salvo las diferencias de plataforma listadas abajo.
 - Para consultarla sin cambiar de rama: `git show main:AI_CONTEXT.md`.
-- Los ADR en `docs/adr/` son los mismos que en `main`. `ADR-0001`, `0002`, `0003` y `0006` llevan una "Nota de rama" al inicio con lo que difiere en esta línea. `ADR-0007` (R2DBC) aplica sin diferencias.
+- Los ADR en `docs/adr/` son los mismos que en `main`. `ADR-0001`, `0002`, `0003` y `0006` llevan una "Nota de rama" al inicio con lo que difiere en esta línea. `ADR-0007` (R2DBC) y `ADR-0008` (soporte WebFlux, decisión de alcance + plan de fases) aplican sin diferencias.
 
 ## Diferencias de esta rama respecto a `main`
 
