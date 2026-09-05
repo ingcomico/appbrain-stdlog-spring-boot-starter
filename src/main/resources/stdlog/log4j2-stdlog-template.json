@@ -1,0 +1,7 @@
+{
+  "@timestamp": { "$resolver": "timestamp" },
+  "level": { "$resolver": "level", "field": "name" },
+  "stdlog": { "$resolver": "message", "stringified": false },
+  "stack_trace": { "$resolver": "exception", "field": "stackTrace", "stackTrace": { "stringified": true } },
+  "stdlog_lib_version": "${stdlog.libVersion:-unknown}"
+}
