@@ -3,6 +3,7 @@ package appbrain.stdlog.restclient;
 import appbrain.stdlog.config.StdlogLevel;
 import appbrain.stdlog.config.StdlogProperties;
 import appbrain.stdlog.core.StdlogEmitter;
+import appbrain.stdlog.core.StdlogFailsafe;
 import appbrain.stdlog.core.StdlogModeResolver;
 import appbrain.stdlog.core.StdlogReactiveCorrelation;
 import appbrain.stdlog.util.StdlogCallerResolver;
@@ -182,7 +183,9 @@ public class StdlogWebClientExchangeFilter implements ExchangeFilterFunction {
             if (error != null) StdlogEmitter.emit(STDLOG, level, payload, error);
             else StdlogEmitter.emit(STDLOG, level, payload);
         } catch (RuntimeException loggingFailure) {
-            // nunca romper la llamada por un fallo de logging
+            // Nunca romper la operacion por un fallo de logging, pero tampoco callarlo:
+            // descartarlo en silencio tambien es perder datos (ADR-0011).
+            StdlogFailsafe.report(loggingFailure);
         } finally {
             if (previous != null) MDC.setContextMap(previous);
             else MDC.clear();

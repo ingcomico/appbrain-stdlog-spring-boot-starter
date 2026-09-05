@@ -3,6 +3,7 @@ package appbrain.stdlog.web;
 import appbrain.stdlog.config.StdlogLevel;
 import appbrain.stdlog.config.StdlogProperties;
 import appbrain.stdlog.core.StdlogEmitter;
+import appbrain.stdlog.core.StdlogFailsafe;
 import appbrain.stdlog.core.StdlogTraceCorrelation;
 import appbrain.stdlog.error.AppTraceUtil;
 import jakarta.servlet.FilterChain;
@@ -116,10 +117,16 @@ public class ControllerBodyAndOutLoggingFilter extends OncePerRequestFilter {
                 chain.doFilter(req, res);
             } finally {
                 try {
-                    captureTraceCorrelation(req);
-                    logInNoBody(req);
-                    logOutNoBody(req, res);
-                    logErrorOrWarnEventIfPresent(req, res);
+                    // Bloque guardado de ADR-0011: la construccion del payload ocurre aqui, antes
+                    // de llegar al emitter, y este finally corre DESPUES de generar la respuesta.
+                    // Sin esta red, una excepcion al construir el log convierte un request
+                    // correcto en un error del cliente.
+                    StdlogFailsafe.run(() -> {
+                        captureTraceCorrelation(req);
+                        logInNoBody(req);
+                        logOutNoBody(req, res);
+                        logErrorOrWarnEventIfPresent(req, res);
+                    });
                 } finally {
                     // Limpieza incondicional: la key puede haber sido seteada acá arriba
                     // (path excluido) o por StdlogMvcOperationInterceptor (@StdlogExcluded).
@@ -141,10 +148,13 @@ public class ControllerBodyAndOutLoggingFilter extends OncePerRequestFilter {
             chain.doFilter(requestWrapper, responseWrapper);
         } finally {
             try {
-                captureTraceCorrelation(requestWrapper);
-                logIn(requestWrapper);
-                logOut(requestWrapper, responseWrapper);
-                logErrorOrWarnEventIfPresent(requestWrapper, responseWrapper);
+                // Bloque guardado de ADR-0011; ver la nota de la rama sin captura de body.
+                StdlogFailsafe.run(() -> {
+                    captureTraceCorrelation(requestWrapper);
+                    logIn(requestWrapper);
+                    logOut(requestWrapper, responseWrapper);
+                    logErrorOrWarnEventIfPresent(requestWrapper, responseWrapper);
+                });
             } finally {
                 MDC.remove(StdlogEmitter.MDC_EXCLUDED);
                 responseWrapper.copyBodyToResponse();

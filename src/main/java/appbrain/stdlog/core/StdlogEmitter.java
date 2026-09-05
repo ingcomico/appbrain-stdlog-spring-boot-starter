@@ -52,18 +52,22 @@ public final class StdlogEmitter {
         if (logger == null || level == null || stdlog == null || isSuppressedByExclusion(level)
                 || !isEnabled(logger, level)) return;
 
-        // Orden deliberado: primero enmascarar, luego enriquecer. El enmascarado va después
-        // del chequeo de nivel para no pagarlo en eventos que no se van a emitir (ADR-0010).
-        stdlog = StdlogMasker.mask(stdlog);
-        stdlog = StdlogTraceCorrelation.enrich(stdlog);
-
-        switch (level) {
-            case TRACE -> logger.trace(append("stdlog", stdlog), "stdlog");
-            case DEBUG -> logger.debug(append("stdlog", stdlog), "stdlog");
-            case INFO  -> logger.info (append("stdlog", stdlog), "stdlog");
-            case WARN  -> logger.warn (append("stdlog", stdlog), "stdlog");
-            case ERROR -> logger.error(append("stdlog", stdlog), "stdlog");
-        }
+        // Red de seguridad de ADR-0011: cubre el enmascarado, el enriquecimiento y la escritura.
+        // No alcanza la CONSTRUCCION del payload, que ocurre antes en cada modulo; por eso cada
+        // punto de instrumentacion envuelve ademas su propio bloque.
+        final Map<String, Object> payload = stdlog;
+        StdlogFailsafe.run(() -> {
+            // Orden deliberado: primero enmascarar, luego enriquecer. El enmascarado va después
+            // del chequeo de nivel para no pagarlo en eventos que no se van a emitir (ADR-0010).
+            Map<String, Object> out = StdlogTraceCorrelation.enrich(StdlogMasker.mask(payload));
+            switch (level) {
+                case TRACE -> logger.trace(append("stdlog", out), "stdlog");
+                case DEBUG -> logger.debug(append("stdlog", out), "stdlog");
+                case INFO  -> logger.info (append("stdlog", out), "stdlog");
+                case WARN  -> logger.warn (append("stdlog", out), "stdlog");
+                case ERROR -> logger.error(append("stdlog", out), "stdlog");
+            }
+        });
     }
 
     /**
@@ -80,18 +84,18 @@ public final class StdlogEmitter {
         if (logger == null || level == null || stdlog == null || isSuppressedByExclusion(level)
                 || !isEnabled(logger, level)) return;
 
-        // Orden deliberado: primero enmascarar, luego enriquecer. El enmascarado va después
-        // del chequeo de nivel para no pagarlo en eventos que no se van a emitir (ADR-0010).
-        stdlog = StdlogMasker.mask(stdlog);
-        stdlog = StdlogTraceCorrelation.enrich(stdlog);
-
-        switch (level) {
-            case TRACE -> logger.trace(append("stdlog", stdlog), "stdlog", t);
-            case DEBUG -> logger.debug(append("stdlog", stdlog), "stdlog", t);
-            case INFO  -> logger.info (append("stdlog", stdlog), "stdlog", t);
-            case WARN  -> logger.warn (append("stdlog", stdlog), "stdlog", t);
-            case ERROR -> logger.error(append("stdlog", stdlog), "stdlog", t);
-        }
+        // Red de seguridad de ADR-0011; ver la nota del método anterior.
+        final Map<String, Object> payload = stdlog;
+        StdlogFailsafe.run(() -> {
+            Map<String, Object> out = StdlogTraceCorrelation.enrich(StdlogMasker.mask(payload));
+            switch (level) {
+                case TRACE -> logger.trace(append("stdlog", out), "stdlog", t);
+                case DEBUG -> logger.debug(append("stdlog", out), "stdlog", t);
+                case INFO  -> logger.info (append("stdlog", out), "stdlog", t);
+                case WARN  -> logger.warn (append("stdlog", out), "stdlog", t);
+                case ERROR -> logger.error(append("stdlog", out), "stdlog", t);
+            }
+        });
     }
 
     private static boolean isEnabled(Logger logger, StdlogLevel level) {

@@ -27,7 +27,7 @@ Antes de realizar cambios arquitectonicos, estructurales o que afecten contratos
    - `0007` — logging del evento `CLIENT_DB` para R2DBC (base de datos reactiva, add-on no limitado a apps reactivas).
    - `0008` — soporte de aplicaciones WebFlux (entrada HTTP reactiva) como stack de primera clase. Implementado por fases (todas hechas) en `appbrain.stdlog.webflux`, sin tocar la via servlet.
    - `0010` — enmascaramiento de datos sensibles en el punto unico de emision. Resuelve el hallazgo F-04 de la auditoria.
-   - `0011` — el logging nunca rompe el request, y nunca falla en silencio. Resuelve F-07. **Decidido; implementacion pendiente.**
+   - `0011` — el logging nunca rompe el request, y nunca falla en silencio. Resuelve F-07. **Implementado.**
    - `0012` — orden de la instrumentacion de entrada HTTP y paridad servlet/reactivo. Resuelve F-08. **Implementado.**
    - `0016` — integracion continua y verificacion automatica de la paridad entre lineas. Da cumplimiento a `ADR-0005`.
 
@@ -108,6 +108,7 @@ El codigo principal esta bajo `src/main/java/appbrain/stdlog`.
   - modo `AUTO`, `PROD`, `NON_PROD`.
 - `appbrain.stdlog.core`: primitives transversales:
   - `StdlogEmitter`;
+  - `StdlogFailsafe` (garantiza que un fallo del logging no altere la operacion instrumentada ni ocurra en silencio; `ADR-0011`);
   - `StdlogMasker` (enmascarado de valores sensibles antes de emitir; `ADR-0010`);
   - `StdlogModeResolver`;
   - `StdlogTraceCorrelation`;
@@ -272,6 +273,7 @@ Los payloads custom pasan por `StdlogEmitter`, quedan bajo la clave `stdlog` y s
 - Las politicas anti-ruido dependen de `StdlogModeResolver` y se aplican por modulo antes de emitir.
 - Cambios en `StdlogProperties`, `StdlogCustom`, `StdlogExcluded`, archivos `META-INF/spring/*` o `stdlog/logback-spring-stdlog.xml` deben tratarse como cambios de contrato publico.
 - Todo evento pasa por `StdlogEmitter`, que aplica en ese unico punto el enmascarado de datos sensibles (`ADR-0010`). Ningun modulo enmascara por su cuenta: asi un modulo nuevo lo hereda sin hacer nada.
+- **Un fallo del logging nunca altera el resultado de la operacion instrumentada, y nunca ocurre en silencio** (`ADR-0011`). Se aplica en dos capas: `StdlogEmitter` envuelve la emision —lo que cubre a cualquier modulo por construccion— y ademas cada punto de instrumentacion envuelve su bloque de construccion del payload, porque el emitter recibe el payload ya construido y su red no llega ahi. Los fallos se registran en el logger `appbrain.stdlog.internal`, nunca en `stdlog`, y con freno por potencias de diez.
 - Cambios en autoconfiguraciones pueden afectar aplicaciones consumidoras por registrar filtros, interceptores, customizers o reemplazar `DataSource` con un bean `@Primary`.
 
 ## Decisiones Tecnicas Actuales
@@ -330,7 +332,6 @@ Suite ejecutada en `main` (`mvn clean test`): 235 tests, 0 fallos, `BUILD SUCCES
 - Los directorios `release` y `target` no estan indexados ni deben tratarse como fuente estructural del codigo.
 - Existen los ADR `0001`-`0008` y `0016` (estado `Aceptado`; suite de tests en verde). El resto de decisiones ya implementadas siguen sin ADR formal.
 - `ADR-0004` (la documentacion viaja en el mismo commit) **no tiene verificacion automatica**: depende de revision humana. `ADR-0005` si la tiene desde `ADR-0016`.
-- **`ADR-0011` decidido pero sin implementar**: la proteccion contra fallos de logging sigue existiendo solo en los modulos reactivos (`StdlogWebFilter`, `StdlogR2dbcQueryListener`); el filtro servlet, el listener JDBC y el interceptor HTTP emiten sin red.
 
 ## Decisiones Pendientes
 

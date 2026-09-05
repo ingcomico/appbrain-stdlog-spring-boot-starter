@@ -4,6 +4,7 @@ import appbrain.stdlog.StdlogExcluded;
 import appbrain.stdlog.config.StdlogLevel;
 import appbrain.stdlog.config.StdlogProperties;
 import appbrain.stdlog.core.StdlogEmitter;
+import appbrain.stdlog.core.StdlogFailsafe;
 import appbrain.stdlog.core.StdlogReactorContext;
 import appbrain.stdlog.core.StdlogTraceCorrelation;
 import appbrain.stdlog.error.AppTraceUtil;
@@ -155,7 +156,9 @@ public class StdlogWebFilter implements WebFilter, Ordered {
             emitOut(cc, requestId, operation, route, status, elapsedMs, resBuf);
             emitErrorEvent(exchange, requestId, operation, route, status, error);
         } catch (RuntimeException loggingFailure) {
-            // nunca romper el request por un fallo de logging
+            // Nunca romper la operacion por un fallo de logging, pero tampoco callarlo:
+            // descartarlo en silencio tambien es perder datos (ADR-0011).
+            StdlogFailsafe.report(loggingFailure);
         } finally {
             if (previous != null) MDC.setContextMap(previous);
             else MDC.clear();

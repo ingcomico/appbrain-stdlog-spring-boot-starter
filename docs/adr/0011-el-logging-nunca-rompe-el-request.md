@@ -4,7 +4,7 @@
 
 Aceptado
 
-> Decisión ratificada; **implementación pendiente**, en un cambio aparte de `ADR-0012`.
+> Implementado.
 
 ## Restricción previa: no perder funcionalidad
 
@@ -184,18 +184,29 @@ dejar rastro, y con el punto 5 eso pasa a ser visible.
 
 ## Validación
 
-Antes de aceptar la implementación:
+`StdlogFailsafeTest` (11 tests): se traga `RuntimeException` y `LinkageError`; **no** se traga
+`OutOfMemoryError` ni `StackOverflowError`, y esos ni siquiera cuentan como fallo capturado; la
+variante con valor devuelve el fallback; el aviso lleva la excepción adjunta; **no** usa el
+logger `stdlog` (comprobado explícitamente, porque ahí estaría la recursión); el freno registra
+sólo el 1.º, 10.º, 100.º y 1000.º de mil fallos, y el aviso incluye el total acumulado.
 
-- Un test por cada punto de instrumentación que fuerce una `RuntimeException` durante la
-  construcción del payload y compruebe que la operación instrumentada **termina bien**: el
-  request devuelve su status, la query devuelve su resultado, la llamada saliente devuelve su
-  respuesta.
-- Un test que compruebe que el fallo **se registra** en `appbrain.stdlog.internal` y que el
-  freno del punto 6 funciona (1.º, 10.º, 100.º).
-- Un test que compruebe que un `Error` no recuperable **no** se captura.
-- La suite servlet completa en verde como prueba de no-regresión, en JDK 17 y JDK 25 (`ADR-0016`).
-- Portado a `spring-boot-3.x` (`ADR-0005`); se espera código idéntico, porque no depende de
-  APIs que difieran entre majors.
+`LoggingFailureDoesNotBreakTheOperationTest` (4 tests): fuerza una `RuntimeException` durante la
+**construcción** del payload en cada punto de instrumentación —con una lista que revienta al
+iterarla, colocada donde cada módulo la recorre— y comprueba que la operación termina bien: el
+request no se convierte en error, la query del consumidor no se rompe, y la llamada saliente
+devuelve su respuesta original y legible.
+
+**Los tests se verificaron en A/B**: desactivando la red, los 4 fallan; restaurándola, los 4
+pasan. Merece la pena anotar por qué se hizo esa comprobación: en la primera versión, dos de
+esos tests pasaban **con y sin** la red, porque el detonante no llegaba a dispararse
+—`headersFrom(...)` sale antes si el request no tiene cabeceras, y con `logAllRequestHeaders=true`
+la allowlist ni se mira—. Un test verde que no prueba nada es peor que no tenerlo.
+
+Suite completa: **284 tests, 0 fallos**, `mvn clean verify` con el trinquete de cobertura de
+`ADR-0016`, en JDK 17 y JDK 25.
+
+Portado a `spring-boot-3.x` (`ADR-0005`): código idéntico, no depende de APIs que difieran
+entre majors.
 
 ## Relación con Otros ADR
 
