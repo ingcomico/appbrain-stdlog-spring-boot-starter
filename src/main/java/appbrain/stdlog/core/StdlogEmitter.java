@@ -1,8 +1,7 @@
 package appbrain.stdlog.core;
 
-import static net.logstash.logback.marker.Markers.append;
-
 import appbrain.stdlog.config.StdlogLevel;
+import appbrain.stdlog.core.backend.StdlogBackend;
 import org.slf4j.Logger;
 import org.slf4j.MDC;
 
@@ -60,13 +59,7 @@ public final class StdlogEmitter {
             // Orden deliberado: primero enmascarar, luego enriquecer. El enmascarado va después
             // del chequeo de nivel para no pagarlo en eventos que no se van a emitir (ADR-0010).
             Map<String, Object> out = StdlogTraceCorrelation.enrich(StdlogMasker.mask(payload));
-            switch (level) {
-                case TRACE -> logger.trace(append("stdlog", out), "stdlog");
-                case DEBUG -> logger.debug(append("stdlog", out), "stdlog");
-                case INFO  -> logger.info (append("stdlog", out), "stdlog");
-                case WARN  -> logger.warn (append("stdlog", out), "stdlog");
-                case ERROR -> logger.error(append("stdlog", out), "stdlog");
-            }
+            StdlogBackend.writer().write(logger, level, out, null);
         });
     }
 
@@ -88,13 +81,7 @@ public final class StdlogEmitter {
         final Map<String, Object> payload = stdlog;
         StdlogFailsafe.run(() -> {
             Map<String, Object> out = StdlogTraceCorrelation.enrich(StdlogMasker.mask(payload));
-            switch (level) {
-                case TRACE -> logger.trace(append("stdlog", out), "stdlog", t);
-                case DEBUG -> logger.debug(append("stdlog", out), "stdlog", t);
-                case INFO  -> logger.info (append("stdlog", out), "stdlog", t);
-                case WARN  -> logger.warn (append("stdlog", out), "stdlog", t);
-                case ERROR -> logger.error(append("stdlog", out), "stdlog", t);
-            }
+            StdlogBackend.writer().write(logger, level, out, t);
         });
     }
 

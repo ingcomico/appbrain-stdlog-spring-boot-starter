@@ -6,8 +6,11 @@ name: CI
 on:
   push:
     branches: [main, spring-boot-3.x]
+  # Sin filtro de rama base a proposito: el filtro `branches` de pull_request se aplica a la
+  # rama DESTINO, asi que con [main, spring-boot-3.x] una PR apilada sobre otra rama de
+  # feature no disparaba CI en absoluto, y reapuntarla despues a main tampoco la disparaba.
+  # Toda PR debe verificarse, sea cual sea su destino.
   pull_request:
-    branches: [main, spring-boot-3.x]
 
 concurrency:
   group: ci-${{ github.ref }}
