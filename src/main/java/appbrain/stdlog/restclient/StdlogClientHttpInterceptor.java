@@ -193,7 +193,20 @@ public class StdlogClientHttpInterceptor implements ClientHttpRequestInterceptor
                         props.getRestclient().getResponseHeadersAllowlist()
                 ));
 
-                if (STDLOG.isDebugEnabled()) {
+                // Tope de captura (auditoria F-09). Para poder loguear el body hay que
+                // bufferizarlo entero, porque la aplicacion tiene que poder releerlo despues; asi
+                // que el unico modo real de acotar el heap es NO capturarlo cuando se sabe de
+                // antemano que es grande. Si el Content-Length lo declara, se deja pasar el stream
+                // intacto y se anota por que. Antes se copiaba la respuesta entera sin ningun
+                // limite, y una descarga grande en DEBUG podia llenar el heap.
+                int maxCapture = props.getRestclient().getMaxCaptureBytes();
+                long declaredLength = response.getHeaders().getContentLength();
+                boolean tooLargeToCapture = maxCapture > 0 && declaredLength > maxCapture;
+
+                if (STDLOG.isDebugEnabled() && tooLargeToCapture) {
+                    resNode.put("bodyCapture", "SKIPPED_TOO_LARGE");
+                    resNode.put("contentLength", declaredLength);
+                } else if (STDLOG.isDebugEnabled()) {
                     byte[] raw = StreamUtils.copyToByteArray(response.getBody());
                     responseToReturn = new CachedBodyClientHttpResponse(response, raw);
                     if (raw.length > 0) {
