@@ -203,9 +203,41 @@ Controla políticas "anti-ruido" en distintos módulos (por ejemplo restclient/j
 
 | Valor | Comportamiento |
 |-------|---------------|
-| `AUTO` | Infiere por la variable de entorno `STDLOG_MODE` (`PROD`, `NON_PROD` o `NONPROD`); si no está definida, default `NON_PROD` |
+| `AUTO` | **Default.** Resuelve por la cadena de abajo |
 | `PROD` | Fuerza modo productivo |
 | `NON_PROD` | Fuerza modo no productivo |
+
+### Cómo resuelve `AUTO` (ADR-0013)
+
+Se evalúa en orden; la primera regla que responde gana:
+
+| # | Señal | Resultado |
+|---|---|---|
+| 1 | `stdlog.mode` explícito | lo que diga |
+| 2 | Variable `STDLOG_MODE` (`PROD`, `NON_PROD`, `NONPROD`) | lo que diga |
+| 3 | Un perfil activo está en `stdlog.prod-profiles` | **PROD** |
+| 4 | Hay perfiles activos y ninguno coincide (`dev`, `local`, `test`…) | **NON_PROD** |
+| 5 | **Ninguna señal** | **PROD** |
+
+```yaml
+stdlog:
+  prod-profiles: [prod, production, prd, pro]   # default
+```
+
+> **Sin señal se asume producción, a propósito.** El error tiene coste asimétrico: equivocarse
+> hacia «no productivo» en producción significa bodies completos, volumen máximo y más
+> superficie de datos sensibles, y **no se nota**. Equivocarse hacia «productivo» en local
+> significa ver menos logs, se nota enseguida y se corrige con una línea. Antes de ADR-0013 el
+> default era el contrario y era silencioso.
+
+**El modo resuelto se anuncia al arrancar**, con el motivo:
+
+```
+appbrain.stdlog.internal  INFO  stdlog: modo PROD (perfil activo 'prod' esta en stdlog.prod-profiles).
+```
+
+Si ves `modo PROD` y no lo esperabas, la línea te dice por qué. El caso habitual en local
+—arrancar con perfil `dev` o `local`— cae en la regla 4 y resuelve no productivo.
 
 ```bash
 export STDLOG_MODE=PROD
