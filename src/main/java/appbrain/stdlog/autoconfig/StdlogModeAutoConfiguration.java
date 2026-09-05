@@ -2,6 +2,8 @@ package appbrain.stdlog.autoconfig;
 
 import appbrain.stdlog.config.StdlogProperties;
 import appbrain.stdlog.core.StdlogModeResolver;
+import org.springframework.beans.factory.BeanFactory;
+import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -33,5 +35,29 @@ public class StdlogModeAutoConfiguration {
                 props.getMode(),
                 List.of(environment.getActiveProfiles()),
                 props.getProdProfiles());
+    }
+
+    /**
+     * Rellena {@code stdlog.consumerBasePackage} con el paquete de la aplicacion cuando el
+     * consumidor no lo configura (auditoria F-12).
+     *
+     * <p>Sin el, {@code AppTraceUtil} no tiene con que filtrar y {@code error.app_trace} sale
+     * <b>siempre vacio</b>, en silencio: el campo estrella del evento de error estaba apagado
+     * de fabrica y nada lo decia. Se usa {@code AutoConfigurationPackages}, que es el mecanismo
+     * estandar de Spring Boot para saber donde vive la aplicacion —el paquete de la clase
+     * anotada con {@code @SpringBootApplication}—, asi que acierta sin que nadie configure nada.</p>
+     */
+    @Bean
+    public InitializingBean stdlogConsumerBasePackageDefaulter(StdlogProperties props, BeanFactory beanFactory) {
+        return () -> {
+            String configured = props.getConsumerBasePackage();
+            if (configured != null && !configured.isBlank()) return;
+            if (!AutoConfigurationPackages.has(beanFactory)) return;
+
+            List<String> packages = AutoConfigurationPackages.get(beanFactory);
+            if (!packages.isEmpty()) {
+                props.setConsumerBasePackage(packages.get(0));
+            }
+        };
     }
 }

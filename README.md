@@ -30,6 +30,7 @@ omiten sin afectar el log.
 - [10. Recomendaciones de seguridad y performance](#10-recomendaciones-de-seguridad-y-performance)
   - [10.1 Enmascaramiento de datos sensibles](#101-enmascaramiento-de-datos-sensibles)
   - [10.2 Si el propio logging falla](#102-si-el-propio-logging-falla)
+  - [10.3 Tope de captura en respuestas salientes](#103-tope-de-captura-en-respuestas-salientes)
 - [11. Troubleshooting](#11-troubleshooting)
 
 ---
@@ -943,7 +944,29 @@ logging:
     appbrain.stdlog.internal: WARN   # default; OFF sólo si sabés lo que estás perdiendo
 ```
 
-### 10.3 Configuraciones a vigilar
+### 10.3 Tope de captura en respuestas salientes
+
+Para poder loguear el body de una respuesta saliente hay que bufferizarlo entero, porque tu
+aplicación tiene que poder releerlo después. Así que el único modo real de acotar la memoria es
+**no capturarlo** cuando se sabe de antemano que es grande:
+
+```yaml
+stdlog:
+  restclient:
+    max-capture-bytes: 262144   # 256 KiB por defecto; 0 = sin tope
+```
+
+Si el `Content-Length` de la respuesta supera el tope, el stream se deja pasar intacto y el
+evento lo anota:
+
+```json
+{ "response": { "bodyCapture": "SKIPPED_TOO_LARGE", "contentLength": 5242880 } }
+```
+
+> **La respuesta que recibe tu aplicación nunca se recorta.** Omitir la captura afecta sólo al
+> log; el body llega completo.
+
+### 10.4 Configuraciones a vigilar
 
 | Configuración | Riesgo |
 |---------------|--------|
@@ -952,6 +975,7 @@ logging:
 | `jdbc.logParams=true` | Puede exponer datos sensibles con nombres de parámetro no previstos |
 | `restclient.captureSource=true` | Hace stacktrace-walk por llamada (costo CPU) |
 | `restclient.maxBodyChars=0` + `logging.level.stdlog=DEBUG` | Puede generar logs muy grandes |
+| `restclient.maxCaptureBytes=0` | Quita el tope de memoria al capturar respuestas salientes — ver abajo |
 | `controller.allowedContentTypes` con binarios/multipart | Puede llenar heap/logs — evitar |
 
 ## 11. Troubleshooting
