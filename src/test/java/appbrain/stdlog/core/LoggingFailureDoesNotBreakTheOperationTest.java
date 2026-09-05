@@ -1,9 +1,9 @@
 package appbrain.stdlog.core;
 
+import appbrain.stdlog.StdlogTestSupport;
 import appbrain.stdlog.config.StdlogProperties;
 import appbrain.stdlog.jdbc.StdlogClientDbQueryListener;
 import appbrain.stdlog.restclient.StdlogClientHttpInterceptor;
-import appbrain.stdlog.web.ControllerBodyAndOutLoggingFilter;
 import net.ttddyy.dsproxy.ExecutionInfo;
 import net.ttddyy.dsproxy.QueryInfo;
 import org.junit.jupiter.api.AfterEach;
@@ -15,7 +15,6 @@ import org.springframework.mock.http.client.MockClientHttpResponse;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import tools.jackson.databind.ObjectMapper;
 
 import java.net.URI;
 import java.util.AbstractList;
@@ -70,8 +69,7 @@ class LoggingFailureDoesNotBreakTheOperationTest {
 
     @Test
     void servletFilterMustNotBreakTheRequest() throws Exception {
-        ControllerBodyAndOutLoggingFilter filter =
-                new ControllerBodyAndOutLoggingFilter(propsThatBreakLogging(), new ObjectMapper());
+        var filter = StdlogTestSupport.controllerFilter(propsThatBreakLogging());
 
         MockHttpServletRequest req = new MockHttpServletRequest("GET", "/orders");
         req.addHeader("x-routing", "MCO");
@@ -89,7 +87,7 @@ class LoggingFailureDoesNotBreakTheOperationTest {
         p.getController().setLogRequestBody(true);
         p.getController().setLogResponseBody(true);
 
-        ControllerBodyAndOutLoggingFilter filter = new ControllerBodyAndOutLoggingFilter(p, new ObjectMapper());
+        var filter = StdlogTestSupport.controllerFilter(p);
         MockHttpServletRequest req = new MockHttpServletRequest("POST", "/orders");
         req.setContentType("application/json");
         req.setContent("{\"a\":1}".getBytes());
