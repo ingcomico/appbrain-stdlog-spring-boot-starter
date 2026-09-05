@@ -28,10 +28,11 @@ Antes de realizar cambios arquitectonicos, estructurales o que afecten contratos
    - `0008` — soporte de aplicaciones WebFlux (entrada HTTP reactiva) como stack de primera clase. Implementado por fases (todas hechas) en `appbrain.stdlog.webflux`, sin tocar la via servlet.
    - `0010` — enmascaramiento de datos sensibles en el punto unico de emision. Resuelve el hallazgo F-04 de la auditoria.
    - `0011` — el logging nunca rompe el request, y nunca falla en silencio. Resuelve F-07. **Implementado.**
+   - `0013` — deteccion del entorno productivo: perfiles de Spring y default seguro. Resuelve F-10. **Implementado.**
    - `0012` — orden de la instrumentacion de entrada HTTP y paridad servlet/reactivo. Resuelve F-08. **Implementado.**
    - `0016` — integracion continua y verificacion automatica de la paridad entre lineas. Da cumplimiento a `ADR-0005`.
 
-   Los numeros `0009` y `0013`-`0015` siguen **reservados** para los hallazgos pendientes de la auditoria tecnica (guardas de classpath ya aplicadas, datos sensibles, fail-safety del logging, orden del filtro, deteccion de entorno, acoplamiento a Logback, versionado del esquema JSON). Se numeraron por tema, no por fecha de creacion, asi que el hueco es deliberado.
+   Los numeros `0009`, `0014` y `0015` siguen **reservados** para los hallazgos pendientes de la auditoria tecnica (guardas de classpath ya aplicadas, datos sensibles, fail-safety del logging, orden del filtro, deteccion de entorno, acoplamiento a Logback, versionado del esquema JSON). Se numeraron por tema, no por fecha de creacion, asi que el hueco es deliberado.
 4. Determinar el impacto antes de modificar codigo.
 5. No duplicar decisiones arquitectonicas en archivos especificos de cada agente.
 6. Si existe una contradiccion entre este archivo, el codigo actual y otros documentos, reportarla antes de asumir cual es correcta.
@@ -108,9 +109,9 @@ El codigo principal esta bajo `src/main/java/appbrain/stdlog`.
   - modo `AUTO`, `PROD`, `NON_PROD`.
 - `appbrain.stdlog.core`: primitives transversales:
   - `StdlogEmitter`;
+  - `StdlogModeResolver` (modo productivo; cadena de `ADR-0013`, resuelto una vez al arrancar);
   - `StdlogFailsafe` (garantiza que un fallo del logging no altere la operacion instrumentada ni ocurra en silencio; `ADR-0011`);
   - `StdlogMasker` (enmascarado de valores sensibles antes de emitir; `ADR-0010`);
-  - `StdlogModeResolver`;
   - `StdlogTraceCorrelation`;
   - `StdlogReactorContext` (claves de correlacion en el `Context` de Reactor; lo escribe `StdlogWebFilter` y lo lee `StdlogWebClientExchangeFilter`; ver `ADR-0008` Fase 2);
   - `StdlogReactiveCorrelation` (resuelve `request_id`/`operation`/exclusion desde el `Context` — `operation` de forma perezosa desde el `ServerWebExchange`; lo usan `StdlogWebClientExchangeFilter` y `StdlogCustomReactive`; `ADR-0008` Fase 3).
@@ -141,7 +142,7 @@ El codigo principal esta bajo `src/main/java/appbrain/stdlog`.
 
 ### Recursos Publicos
 
-- `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` registra diez autoconfiguraciones (`StdlogMaskingAutoConfiguration`, `StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration`, `StdlogWebFluxAutoConfiguration`, `StdlogReactorContextPropagationAutoConfiguration`, `StdlogRestClientAutoConfiguration`, `StdlogWebClientAutoConfiguration`, `StdlogJdbcAutoConfiguration`, `StdlogR2dbcAutoConfiguration`, `StdlogErrorAutoConfiguration`). `StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration` y `StdlogErrorAutoConfiguration` son `@ConditionalOnWebApplication(SERVLET)`; las dos ultimas tambien comprueban las clases MVC que exponen. `StdlogWebFluxAutoConfiguration` y `StdlogReactorContextPropagationAutoConfiguration` son `@ConditionalOnWebApplication(REACTIVE)`, por lo que las vias servlet y reactiva no co-activan. `StdlogMaskingAutoConfiguration` no tiene condiciones de classpath —solo depende de `core` y `config`— y transfiere `stdlog.masking.*` al campo estatico de `StdlogMasker` al arrancar. `StdlogWebFluxAutoConfiguration` registra dos beans: `StdlogWebFilter` y `StdlogWebExceptionHandler` (ambos gated por `stdlog.controller.webflux.enabled`). La Fase 3 no añade una linea nueva a `AutoConfiguration.imports`.
+- `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` registra once autoconfiguraciones (`StdlogModeAutoConfiguration`, `StdlogMaskingAutoConfiguration`, `StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration`, `StdlogWebFluxAutoConfiguration`, `StdlogReactorContextPropagationAutoConfiguration`, `StdlogRestClientAutoConfiguration`, `StdlogWebClientAutoConfiguration`, `StdlogJdbcAutoConfiguration`, `StdlogR2dbcAutoConfiguration`, `StdlogErrorAutoConfiguration`). `StdlogAutoConfiguration`, `StdlogWebMvcAutoConfiguration` y `StdlogErrorAutoConfiguration` son `@ConditionalOnWebApplication(SERVLET)`; las dos ultimas tambien comprueban las clases MVC que exponen. `StdlogWebFluxAutoConfiguration` y `StdlogReactorContextPropagationAutoConfiguration` son `@ConditionalOnWebApplication(REACTIVE)`, por lo que las vias servlet y reactiva no co-activan. `StdlogMaskingAutoConfiguration` no tiene condiciones de classpath —solo depende de `core` y `config`— y transfiere `stdlog.masking.*` al campo estatico de `StdlogMasker` al arrancar. `StdlogWebFluxAutoConfiguration` registra dos beans: `StdlogWebFilter` y `StdlogWebExceptionHandler` (ambos gated por `stdlog.controller.webflux.enabled`). La Fase 3 no añade una linea nueva a `AutoConfiguration.imports`.
 - `META-INF/spring.factories` registra `StdlogVersionEnvironmentPostProcessor` como `EnvironmentPostProcessor`.
 - `stdlog/logback-spring-stdlog.xml` define un appender JSON de consola, logger `stdlog`, root logger y campo `stdlog_lib_version`.
 - `stdlog-version.properties` alimenta la version de libreria expuesta como property `stdlog.libVersion`.
@@ -150,7 +151,7 @@ El codigo principal esta bajo `src/main/java/appbrain/stdlog`.
 
 ### Configuracion `stdlog.*`
 
-`StdlogProperties` expone el prefijo `stdlog` y cinco secciones: `controller`, `restclient`, `jdbc`, `error` y `masking` (`ADR-0010`: `enabled`, `keys`, `additional-keys`, `placeholder`).
+`StdlogProperties` expone el prefijo `stdlog`, la property `prod-profiles` (`ADR-0013`) y cinco secciones: `controller`, `restclient`, `jdbc`, `error` y `masking` (`ADR-0010`: `enabled`, `keys`, `additional-keys`, `placeholder`).
 
 Reglas vigentes:
 

@@ -97,6 +97,9 @@ class StdlogRestClientSupportTest {
 
     private static StdlogProperties propsWithoutCallId() {
         StdlogProperties props = new StdlogProperties();
+        // Modo explicito: comprueban el payload de llamadas EXITOSAS, y desde ADR-0013 el modo
+        // AUTO sin ninguna senal resuelve productivo, donde logOnlyOnFailureInProd las suprime.
+        props.setMode(StdlogProperties.Mode.NON_PROD);
         props.getRestclient().setEnabled(true);
         props.getRestclient().setCaptureCallId(false);
         return props;
