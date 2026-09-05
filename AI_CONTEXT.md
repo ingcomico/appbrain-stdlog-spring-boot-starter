@@ -342,10 +342,15 @@ Suite ejecutada en `main` (`mvn clean test`): 235 tests, 0 fallos, `BUILD SUCCES
 
 ## Decisiones Pendientes
 
+> La auditoria tecnica esta **cerrada**: sus 16 hallazgos se resolvieron entre `ADR-0010`-`0014`,
+> `ADR-0016` y correcciones directas. Lo que sigue son decisiones abiertas de antes, no deuda de
+> la auditoria. De las cuatro, la unica que bloquea el uso real de la libreria por terceros es la
+> primera.
+
 - Definir si se publica a un repositorio remoto (Maven Central / JitPack) ademas del flujo local `release/`. El esquema de version por linea (`4.x.y` / `3.x.y`) ya esta decidido en `ADR-0005`.
 - Definir si el reemplazo `@Primary DataSource` / `@Primary ConnectionFactory` es el contrato definitivo o si debe existir una alternativa menos invasiva.
 - Definir politica formal de soporte para multiples datasources / connection factories.
-- Definir si el ciclo `StdlogCustom`/`StdlogEmitter` debe aceptarse como patron de fachada estatica o refactorizarse.
+- Definir si la **fachada estatica** se acepta como patron o se refactoriza. Ya no es un caso aislado: el cierre de la auditoria anadio cuatro clases mas que siguen el mismo esquema de estado estatico configurado al arrancar — `StdlogMasker` (`ADR-0010`), `StdlogFailsafe` (`ADR-0011`), `StdlogModeResolver` (`ADR-0013`) y `StdlogBackend` (`ADR-0014`), ademas de `StdlogCustom`/`StdlogEmitter`. El motivo comun es que los puntos de instrumentacion no son beans y no pueden recibir inyeccion; la alternativa exigiria pasar contexto por cada llamada.
 
 ## Reglas para Cambios
 
