@@ -324,6 +324,15 @@ public class StdlogProperties {
         private int maxBodyChars = 0;
 
         /**
+         * Tope de bytes que se leen en memoria del body de la respuesta saliente para poder
+         * loguearlo (auditoria F-09). Antes se leia la respuesta ENTERA sin limite: una
+         * descarga grande en DEBUG podia llenar el heap. Simetrico con
+         * {@code restclient.webclient.maxCaptureBytes}. Default: {@code 262144} (256 KiB).
+         * {@code 0} = sin tope (no recomendado).
+         */
+        private int maxCaptureBytes = 256 * 1024;
+
+        /**
          * Lista de headers del request a incluir en el log.
          * Solo aplica cuando {@code logAllRequestHeaders=false}.
          * Default: vacío (no se loguea ningún header de request).
@@ -395,6 +404,9 @@ public class StdlogProperties {
 
         public boolean isLogOnlyOnFailureInProd() { return logOnlyOnFailureInProd; }
         public void setLogOnlyOnFailureInProd(boolean logOnlyOnFailureInProd) { this.logOnlyOnFailureInProd = logOnlyOnFailureInProd; }
+
+        public int getMaxCaptureBytes() { return maxCaptureBytes; }
+        public void setMaxCaptureBytes(int maxCaptureBytes) { this.maxCaptureBytes = maxCaptureBytes; }
 
         public int getMaxBodyChars() { return maxBodyChars; }
         public void setMaxBodyChars(int maxBodyChars) { this.maxBodyChars = maxBodyChars; }
