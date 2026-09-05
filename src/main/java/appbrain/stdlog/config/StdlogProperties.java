@@ -35,7 +35,9 @@ public class StdlogProperties {
      * Controla las políticas de filtrado de logs según el entorno de ejecución.
      *
      * <ul>
-     *   <li>{@code AUTO} — detecta el entorno via la variable de entorno {@code STDLOG_MODE}.</li>
+     *   <li>{@code AUTO} — resuelve por la cadena de `ADR-0013`: {@code STDLOG_MODE}, luego los
+     *       perfiles activos de Spring contra {@code stdlog.prod-profiles} y, si no hay ninguna
+     *       señal, <b>productivo</b>. El modo resuelto se anuncia al arrancar.</li>
      *   <li>{@code PROD} — fuerza comportamiento productivo (anti-ruido habilitado).</li>
      *   <li>{@code NON_PROD} — fuerza comportamiento no productivo (loguea todo).</li>
      * </ul>
@@ -56,6 +58,13 @@ public class StdlogProperties {
      */
     private String consumerBasePackage;
 
+    /**
+     * Perfiles de Spring que se consideran productivos cuando {@code mode=AUTO} (`ADR-0013`).
+     * Comparación sin distinguir mayúsculas. Si se deja vacía rige la lista incorporada:
+     * {@code prod}, {@code production}, {@code prd}, {@code pro}.
+     */
+    private List<String> prodProfiles = new ArrayList<>();
+
     private final Controller controller = new Controller();
     private final Restclient restclient = new Restclient();
     private final Jdbc jdbc = new Jdbc();
@@ -64,6 +73,11 @@ public class StdlogProperties {
 
     public Mode getMode() { return mode; }
     public void setMode(Mode mode) { this.mode = mode; }
+
+    public List<String> getProdProfiles() { return prodProfiles; }
+    public void setProdProfiles(List<String> prodProfiles) {
+        this.prodProfiles = prodProfiles == null ? new ArrayList<>() : prodProfiles;
+    }
 
     public String getConsumerBasePackage() { return consumerBasePackage; }
     public void setConsumerBasePackage(String consumerBasePackage) { this.consumerBasePackage = consumerBasePackage; }

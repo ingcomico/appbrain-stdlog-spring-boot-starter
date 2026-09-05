@@ -6,7 +6,7 @@ Esta rama es la **línea Spring Boot 3** del starter (ver `ADR-0005`). Tiene **p
 
 - La descripción completa de arquitectura, paquetes, contratos públicos, flujo principal, principios y limitaciones vive en `AI_CONTEXT.md` de la rama `main` y **aplica igual aquí**, salvo las diferencias de plataforma listadas abajo.
 - Para consultarla sin cambiar de rama: `git show main:AI_CONTEXT.md`.
-- Los ADR en `docs/adr/` son los mismos que en `main`. `ADR-0001`, `0002`, `0003` y `0006` llevan una "Nota de rama" al inicio con lo que difiere en esta línea. `ADR-0007` (R2DBC), `ADR-0008` (soporte WebFlux; **todas las fases hechas**), `ADR-0010` (enmascaramiento de datos sensibles), `ADR-0011` (fail-safety del logging), `ADR-0012` (orden de la instrumentacion de entrada) y `ADR-0016` (CI y paridad) aplican sin diferencias.
+- Los ADR en `docs/adr/` son los mismos que en `main`. `ADR-0001`, `0002`, `0003` y `0006` llevan una "Nota de rama" al inicio con lo que difiere en esta línea. `ADR-0007` (R2DBC), `ADR-0008` (soporte WebFlux; **todas las fases hechas**), `ADR-0010` (enmascaramiento de datos sensibles), `ADR-0011` (fail-safety del logging), `ADR-0013` (deteccion del entorno productivo), `ADR-0012` (orden de la instrumentacion de entrada) y `ADR-0016` (CI y paridad) aplican sin diferencias.
 
 - Rige tambien aqui el principio arquitectonico de `main`: **el esquema emitido es un contrato y ningun cambio puede dejar de emitir un campo que ya emitia**. Un porte que degrade `operation`, `route`, `request_id` o la correlacion de tracing no es aceptable.
 
@@ -26,6 +26,7 @@ Esta rama es la **línea Spring Boot 3** del starter (ver `ADR-0005`). Tiene **p
 | Logging de R2DBC (`ADR-0007`) | `io.r2dbc:r2dbc-proxy` + `r2dbc-spi` `provided` | **idéntico** (código agnóstico: `io.r2dbc.*` + `org.slf4j.MDC`) |
 | Entrada WebFlux (`ADR-0008`, todas las fases) | `spring-webflux` + `io.micrometer:context-propagation` `provided`; `StdlogWebFilter`, `StdlogWebExceptionHandler`, `StdlogCustomReactive`, `StdlogReactiveCorrelation`, lectura del Reactor Context en `StdlogWebClientExchangeFilter`, `ThreadLocalAccessor` de `request_id` | **idéntico** (usa API de Spring 6/7 común: `WebFilter`, `WebExceptionHandler`, `HandlerMapping`, `AnnotatedElementUtils`, decoradores reactivos, `Mono.deferContextual`) |
 
+| Deteccion del entorno productivo (`ADR-0013`) | `StdlogModeResolver` con la cadena de perfiles y default seguro; `StdlogModeAutoConfiguration` lee el `Environment` | **idéntico** (`Environment` y perfiles existen igual en Boot 3) |
 | Fail-safety del logging (`ADR-0011`) | `StdlogFailsafe` en `core`, red en `StdlogEmitter` y bloque guardado en cada punto de instrumentacion; logger `appbrain.stdlog.internal` | **idéntico** (sólo usa SLF4J y JDK) |
 | Orden del filtro de entrada (`ADR-0012`) | `ControllerBodyAndOutLoggingFilter` en `Integer.MIN_VALUE + 100`, por fuera de la cadena de Spring Security; evento de error por status | **idéntico** (mismo `FilterRegistrationBean` y misma lógica) |
 | Test de contenedor de `ADR-0012` | `spring-boot-starter-web` y `spring-boot-starter-security` en scope `test`; cliente `HttpClient` del JDK | **idéntico** (se evitó `TestRestTemplate`, que Boot 4 retiró, precisamente para que el test valga en las dos ramas) |
@@ -44,7 +45,7 @@ Nada más difiere. El código de negocio (`StdlogEmitter`, `StdlogTraceCorrelati
 - El jar **no** empaqueta `META-INF/build-info.properties`: la ejecución del goal `build-info` se eliminó (auditoría F-03), porque podía secuestrar el `/actuator/info` del consumidor. La versión de librería se expone por `stdlog-version.properties`.
 - `README.md` documenta coordenadas `...:3.0.0-local` para el flujo de `mvn clean deploy` a `release/`.
 - Trinquete de cobertura (`ADR-0016`): `jacoco:check` en fase `verify`, mínimos de 85 % de líneas y 65 % de ramas. `mvn test` no lo ejecuta.
-- Suite: 284 tests, 0 fallos, verificado en JDK 17 y JDK 25.
+- Suite: 299 tests, 0 fallos, verificado en JDK 17 y JDK 25.
 
 ## Integración continua (`ADR-0016`)
 

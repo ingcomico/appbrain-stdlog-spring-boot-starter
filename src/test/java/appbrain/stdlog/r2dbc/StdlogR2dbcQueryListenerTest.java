@@ -241,6 +241,11 @@ class StdlogR2dbcQueryListenerTest {
 
     private static StdlogProperties props() {
         StdlogProperties p = new StdlogProperties();
+        // Modo explicito: estos tests comprueban el payload de llamadas EXITOSAS, y desde
+        // ADR-0013 el modo AUTO sin ninguna senal resuelve productivo, donde
+        // logOnlyOnFailureInProd / logOnlySlowOrFailureInProd las suprimen. Declararlo hace
+        // visible lo que antes dependia de un default que resulto ser el equivocado.
+        p.setMode(StdlogProperties.Mode.NON_PROD);
         p.getJdbc().setEnabled(true);
         return p;
     }

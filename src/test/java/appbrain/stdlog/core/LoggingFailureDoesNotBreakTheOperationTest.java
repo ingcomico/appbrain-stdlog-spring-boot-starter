@@ -103,6 +103,9 @@ class LoggingFailureDoesNotBreakTheOperationTest {
     void jdbcListenerMustNotBreakTheQuery() {
         StdlogProperties p = new StdlogProperties();
         p.getJdbc().setEnabled(true);
+        // Sin esto, desde ADR-0013 el modo resuelve productivo y el listener sale antes de
+        // construir el payload: el detonante nunca se dispararia y el test no probaria nada.
+        p.setMode(StdlogProperties.Mode.NON_PROD);
 
         ExecutionInfo info = new ExecutionInfo();
         info.setElapsedTime(5);
