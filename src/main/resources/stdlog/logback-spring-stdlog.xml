@@ -16,7 +16,15 @@
                     { "message": "%replace(%message){'^stdlog$',''}" }
                 </pattern-->
                 <!--loggerName/-->
-                <!-- <mdc> ... </mdc> -->
+                <!-- Correlacion en TODA linea de log, no solo en los eventos stdlog (auditoria F-11).
+                     Sin esto se puede filtrar por request_id los eventos de la libreria, pero no las
+                     lineas que escribe el codigo de la aplicacion en ese mismo request, que suele ser
+                     lo primero que hace falta al depurar.
+                     Se excluye stdlog.excluded: es un marcador interno de la politica de exclusion
+                     (ver StdlogEmitter), no informacion util para el consumidor. -->
+                <mdc>
+                    <excludeMdcKeyName>stdlog.excluded</excludeMdcKeyName>
+                </mdc>
                 <globalCustomFields>
                     <customFields>{"stdlog_lib_version":"${STDLOG_LIB_VERSION}"}</customFields>
                 </globalCustomFields>
