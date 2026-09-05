@@ -29,6 +29,7 @@ omiten sin afectar el log.
 - [9. Evento extra por excepción MVC (WARN/ERROR)](#9-evento-extra-por-excepción-mvc-warnerror)
 - [10. Recomendaciones de seguridad y performance](#10-recomendaciones-de-seguridad-y-performance)
   - [10.1 Enmascaramiento de datos sensibles](#101-enmascaramiento-de-datos-sensibles)
+  - [10.2 Si el propio logging falla](#102-si-el-propio-logging-falla)
 - [11. Troubleshooting](#11-troubleshooting)
 
 ---
@@ -852,7 +853,33 @@ stdlog:
 No sustituye a no enviar el dato: si algo no debe salir nunca del proceso, lo correcto sigue
 siendo no capturarlo.
 
-### 10.2 Configuraciones a vigilar
+### 10.2 Si el propio logging falla
+
+Desde **ADR-0011**, un fallo dentro de stdlog **nunca altera el resultado de tu operación**: el
+request devuelve su status, la query devuelve su resultado y la llamada saliente devuelve su
+respuesta, aunque construir o emitir el evento haya reventado.
+
+Pero tampoco se calla, porque un evento que desaparece por un fallo silencioso es
+indistinguible de uno que no debía emitirse. Los fallos se registran en un logger aparte:
+
+```
+appbrain.stdlog.internal  WARN  stdlog no pudo emitir un evento; la operacion instrumentada
+                                no se ve afectada. Fallos acumulados: 1. ...
+```
+
+- Es un **logger propio**, no `stdlog`: si el fallo estuviera en la ruta de emisión, usar
+  `stdlog` recursaría.
+- Lleva **freno**: sólo avisa en el fallo 1, 10, 100, 1000… con el total acumulado, para que un
+  fallo sistemático sea visible sin inundar.
+- Si ves estos avisos, **no los silencies**: significan que estás perdiendo eventos.
+
+```yaml
+logging:
+  level:
+    appbrain.stdlog.internal: WARN   # default; OFF sólo si sabés lo que estás perdiendo
+```
+
+### 10.3 Configuraciones a vigilar
 
 | Configuración | Riesgo |
 |---------------|--------|

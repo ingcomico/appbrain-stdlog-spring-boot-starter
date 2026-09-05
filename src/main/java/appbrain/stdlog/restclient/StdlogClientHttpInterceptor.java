@@ -3,6 +3,7 @@ package appbrain.stdlog.restclient;
 import appbrain.stdlog.config.StdlogLevel;
 import appbrain.stdlog.config.StdlogProperties;
 import appbrain.stdlog.core.StdlogEmitter;
+import appbrain.stdlog.core.StdlogFailsafe;
 import appbrain.stdlog.core.StdlogModeResolver;
 import appbrain.stdlog.util.StdlogCallerResolver;
 import org.slf4j.Logger;
@@ -69,18 +70,9 @@ public class StdlogClientHttpInterceptor implements ClientHttpRequestInterceptor
 
         String callId = props.getRestclient().isCaptureCallId() ? UUID.randomUUID().toString() : null;
 
-        Map<String, Object> source = null;
-        if (props.getRestclient().isCaptureSource()) {
-            String basePkg = firstNonBlank(props.getRestclient().getConsumerBasePackage(), props.getConsumerBasePackage());
-            StackTraceElement caller = StdlogCallerResolver.findConsumerCaller(basePkg);
-            if (caller != null) {
-                source = new LinkedHashMap<>();
-                source.put("class", caller.getClassName());
-                source.put("method", caller.getMethodName());
-                source.put("file", caller.getFileName());
-                source.put("line", caller.getLineNumber());
-            }
-        }
+        // Extraido a metodo para que sea final y pueda capturarse en los bloques guardados
+        // de ADR-0011; el comportamiento es el mismo de siempre.
+        final Map<String, Object> source = resolveSource();
 
         long start = System.currentTimeMillis();
         try {
@@ -93,15 +85,41 @@ public class StdlogClientHttpInterceptor implements ClientHttpRequestInterceptor
             boolean isProd = StdlogModeResolver.isProd(props);
             if (!(isProd && props.getRestclient().isLogOnlyOnFailureInProd() && !failure)) {
                 StdlogLevel level = levelForStatus(status);
-                response = emit(request, body, response, status, elapsedMs, failure, level, null, requestId, operation, callId, source);
+                // Bloque guardado de ADR-0011. Se usa la variante con valor porque emit(...)
+                // devuelve la respuesta re-leible que necesita el consumidor: si la emision
+                // falla, se devuelve la original y la llamada sigue su curso intacta.
+                final ClientHttpResponse original = response;
+                response = StdlogFailsafe.call(
+                        () -> emit(request, body, original, status, elapsedMs, failure, level, null,
+                                requestId, operation, callId, source),
+                        original);
             }
             return response;
         } catch (IOException e) {
             long elapsedMs = System.currentTimeMillis() - start;
             StdlogLevel level = props.getRestclient().getInLevelFailure5xx();
-            emit(request, body, null, 500, elapsedMs, true, level, e, requestId, operation, callId, source);
+            // Guardado tambien aqui: el fallo de red que se esta reportando debe propagarse
+            // tal cual, sin que un problema del logging lo sustituya por otro distinto.
+            StdlogFailsafe.run(() -> emit(request, body, null, 500, elapsedMs, true, level, e,
+                    requestId, operation, callId, source));
             throw e;
         }
+    }
+
+    /** Clase, metodo, fichero y linea del consumidor que origino la llamada; {@code null} si no aplica. */
+    private Map<String, Object> resolveSource() {
+        if (!props.getRestclient().isCaptureSource()) return null;
+
+        String basePkg = firstNonBlank(props.getRestclient().getConsumerBasePackage(), props.getConsumerBasePackage());
+        StackTraceElement caller = StdlogCallerResolver.findConsumerCaller(basePkg);
+        if (caller == null) return null;
+
+        Map<String, Object> source = new LinkedHashMap<>();
+        source.put("class", caller.getClassName());
+        source.put("method", caller.getMethodName());
+        source.put("file", caller.getFileName());
+        source.put("line", caller.getLineNumber());
+        return source;
     }
 
     private StdlogLevel levelForStatus(int status) {

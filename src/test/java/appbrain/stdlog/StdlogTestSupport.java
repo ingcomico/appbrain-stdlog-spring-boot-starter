@@ -5,6 +5,8 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.core.JsonGenerator;
+import appbrain.stdlog.config.StdlogProperties;
+import appbrain.stdlog.web.ControllerBodyAndOutLoggingFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import net.logstash.logback.argument.StructuredArgument;
 import org.slf4j.LoggerFactory;
@@ -25,6 +27,18 @@ public final class StdlogTestSupport {
     private StdlogTestSupport() {}
 
     /** Engancha un {@link ListAppender} al logger {@code "stdlog"} con el nivel dado y lo retorna. */
+    /**
+     * Construye el filtro de controller con el {@code ObjectMapper} de esta rama.
+     *
+     * <p>Existe para que los tests no tengan que importar Jackson: el paquete difiere entre
+     * las dos lineas ({@code tools.jackson} en Boot 4, {@code com.fasterxml} en Boot 3), y
+     * esta clase ya es una de las diferencias declaradas. Asi la divergencia queda confinada
+     * aqui en vez de propagarse a cada test que necesite un filtro.</p>
+     */
+    public static ControllerBodyAndOutLoggingFilter controllerFilter(StdlogProperties props) {
+        return new ControllerBodyAndOutLoggingFilter(props, MAPPER);
+    }
+
     public static ListAppender<ILoggingEvent> attachStdlogAppender(Level level) {
         Logger logger = (Logger) LoggerFactory.getLogger("stdlog");
         logger.setLevel(level);

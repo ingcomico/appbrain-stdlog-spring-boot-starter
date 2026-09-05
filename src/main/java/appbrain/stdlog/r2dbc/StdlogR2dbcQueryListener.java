@@ -3,6 +3,7 @@ package appbrain.stdlog.r2dbc;
 import appbrain.stdlog.config.StdlogLevel;
 import appbrain.stdlog.config.StdlogProperties;
 import appbrain.stdlog.core.StdlogEmitter;
+import appbrain.stdlog.core.StdlogFailsafe;
 import appbrain.stdlog.core.StdlogModeResolver;
 import io.r2dbc.proxy.core.Binding;
 import io.r2dbc.proxy.core.Bindings;
@@ -67,7 +68,9 @@ public class StdlogR2dbcQueryListener implements ProxyExecutionListener {
             if (capturedMdc != null) MDC.setContextMap(capturedMdc);
             emit(info, cfg);
         } catch (RuntimeException loggingFailure) {
-            // nunca romper la query por un fallo de logging
+            // Nunca romper la operacion por un fallo de logging, pero tampoco callarlo:
+            // descartarlo en silencio tambien es perder datos (ADR-0011).
+            StdlogFailsafe.report(loggingFailure);
         } finally {
             if (previous != null) MDC.setContextMap(previous);
             else MDC.clear();

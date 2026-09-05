@@ -3,6 +3,7 @@ package appbrain.stdlog.jdbc;
 import appbrain.stdlog.config.StdlogLevel;
 import appbrain.stdlog.config.StdlogProperties;
 import appbrain.stdlog.core.StdlogEmitter;
+import appbrain.stdlog.core.StdlogFailsafe;
 import appbrain.stdlog.core.StdlogModeResolver;
 import net.ttddyy.dsproxy.ExecutionInfo;
 import net.ttddyy.dsproxy.QueryInfo;
@@ -56,6 +57,12 @@ public class StdlogClientDbQueryListener implements QueryExecutionListener {
     @Override
     public void afterQuery(ExecutionInfo execInfo, List<QueryInfo> queryInfoList) {
         if (props == null || props.getJdbc() == null || !props.getJdbc().isEnabled()) return;
+        // Bloque guardado de ADR-0011: una excepcion construyendo el payload no puede romper
+        // la query del consumidor, que en este punto ya se ejecuto correctamente.
+        StdlogFailsafe.run(() -> emitQueryEvent(execInfo, queryInfoList));
+    }
+
+    private void emitQueryEvent(ExecutionInfo execInfo, List<QueryInfo> queryInfoList) {
 
         long elapsedMs = execInfo.getElapsedTime();
         Throwable error = execInfo.getThrowable();
