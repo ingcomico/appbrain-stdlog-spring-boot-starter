@@ -19,7 +19,7 @@ omiten sin afectar el log.
 ## Tabla de contenido
 
 - [1. Instalación](#1-instalación)
-- [2. Logback (obligatorio)](#2-logback-obligatorio)
+- [2. Backend de logging](#2-backend-de-logging)
 - [3. Configuración completa (ejemplo)](#3-configuración-completa-ejemplo)
 - [4. stdlog.mode](#4-stdlogmode)
 - [5. Controller logs (CONTROLLER_HTTP)](#5-controller-logs-controller_http)
@@ -94,15 +94,47 @@ La carpeta `release/` no se versiona en Git; se regenera ejecutando `mvn clean d
 
 ---
 
-## 2. Logback (obligatorio)
+## 2. Backend de logging
 
-El starter provee `classpath:stdlog/logback-spring-stdlog.xml` para emitir JSON (logstash encoder).
+El starter **detecta el backend enlazado** y emite por el camino correspondiente, con la misma
+salida JSON en ambos (ADR-0014). No hay que configurar nada para elegirlo.
 
-En el consumidor:
+### 2.0 Logback (por defecto)
 
 ```yaml
 logging:
   config: classpath:stdlog/logback-spring-stdlog.xml
+```
+
+### 2.0.1 Log4j2
+
+```yaml
+logging:
+  config: classpath:stdlog/log4j2-stdlog.xml
+```
+
+El starter usa la API de Log4j2 directamente (`ObjectMessage`), porque los objetos estructurados
+no se pueden pasar por la API de SLF4J. `log4j-api` es una dependencia `provided`: sólo se usa
+si tu aplicación ya tiene Log4j2.
+
+**La salida es equivalente en los dos casos** — mismo objeto anidado bajo `stdlog`, mismas
+claves y en el mismo orden. Hay un test en el build que compara ambas salidas y falla si
+divergen.
+
+### 2.0.2 Si tu backend no es ninguno de los dos
+
+El starter **no se rompe** y **no pierde el evento**: lo emite como texto en el mensaje. Pero te
+avisa al arrancar, porque perder los logs estructurados en silencio es peor que perderlos:
+
+```
+appbrain.stdlog.internal  WARN  stdlog: backend de logging no soportado. Los eventos se emiten
+                                como texto plano, no como JSON estructurado. ... Ver ADR-0014.
+```
+
+Con un backend soportado, la misma línea te confirma cuál se detectó:
+
+```
+appbrain.stdlog.internal  INFO  stdlog: backend Logback + logstash-logback-encoder.
 ```
 
 ### 2.1 Nivel del logger stdlog

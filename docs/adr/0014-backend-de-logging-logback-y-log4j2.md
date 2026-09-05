@@ -2,10 +2,11 @@
 
 ## Estado
 
-Propuesto
+Aceptado
 
-> Decisión pendiente de ratificar. La implementación no ha empezado. La viabilidad **sí** se
-> verificó antes de escribir el ADR: ver "Spike de viabilidad".
+> Implementado. La viabilidad se verificó **antes** de escribir el ADR (ver "Spike de
+> viabilidad") y la equivalencia de salida está cubierta por un test que se comprobó capaz de
+> detectar una divergencia real.
 
 ## Restricción previa: no perder funcionalidad
 
@@ -213,15 +214,34 @@ falta y lo que hace el problema difícil de descubrir.
 
 ## Validación
 
-Antes de aceptar la implementación:
+**`BackendOutputEquivalenceTest` — la condición de aceptación central.** Compara salidas
+**reales**, no aproximaciones: el lado Logback emite de verdad y se serializa el `Marker` con el
+encoder de logstash; el lado Log4j2 construye un `LogEvent` con el mismo `ObjectMessage` y lo
+renderiza con un `JsonTemplateLayout` real. Verifica el JSON completo, el anidamiento, los tipos
+y el orden de claves.
 
-- **Test de equivalencia de salida**: el mismo evento emitido por los dos escritores debe
-  producir el mismo JSON bajo la clave `stdlog`. Es la condición de aceptación central.
-- Test de detección para cada backend, y del aviso de arranque.
-- Test de que con un backend desconocido no se rompe nada y se avisa.
-- Medición del coste por evento de la indirección.
-- Suite completa en verde en JDK 17 y JDK 25 (`ADR-0016`).
-- Portado a `spring-boot-3.x` (`ADR-0005`).
+**Se comprobó que ese test detecta una divergencia real.** Sustituyendo `ObjectMessage` por
+`MapMessage` en el escritor de Log4j2, el test falla y muestra exactamente el reordenamiento
+alfabético que el spike había anticipado:
+
+```
+expected: {"event":"CONTROLLER_HTTP","direction":"IN","request_id":"abc-123",...}
+but was:  {"direction":"IN","elapsedMs":12,"event":"CONTROLLER_HTTP",...}
+```
+
+Sin esa comprobación, el test podría haber estado pasando sin verificar nada — que es
+precisamente el modo de fallo que este ADR identificó como su riesgo principal.
+
+**`StdlogBackendTest`** (7 tests): detección de Logback en la suite; el escritor se resuelve una
+sola vez; el backend se anuncia al arrancar; con un backend no soportado el aviso es `WARN` y no
+`INFO`, dice «no soportado» y remite a este ADR; y sobre todo, **el respaldo no pierde el
+evento** —degrada el formato pero conserva `event` y `request_id`— y sigue llevando el
+`Throwable`.
+
+Suite completa: **309 tests, 0 fallos**, `mvn clean verify` con el trinquete de cobertura, en
+JDK 17 y JDK 25. `log4j-api` verificado en scope `provided`: no llega al consumidor.
+
+Portado a `spring-boot-3.x` (`ADR-0005`).
 
 ## Relación con Otros ADR
 
