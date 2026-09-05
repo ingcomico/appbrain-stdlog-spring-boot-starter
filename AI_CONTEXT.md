@@ -30,9 +30,10 @@ Antes de realizar cambios arquitectonicos, estructurales o que afecten contratos
    - `0011` — el logging nunca rompe el request, y nunca falla en silencio. Resuelve F-07. **Implementado.**
    - `0013` — deteccion del entorno productivo: perfiles de Spring y default seguro. Resuelve F-10. **Implementado.**
    - `0012` — orden de la instrumentacion de entrada HTTP y paridad servlet/reactivo. Resuelve F-08. **Implementado.**
+   - `0014` — backend de logging: Logback y Log4j2 con salida equivalente (`Propuesto`). Atiende el fondo de F-13.
    - `0016` — integracion continua y verificacion automatica de la paridad entre lineas. Da cumplimiento a `ADR-0005`.
 
-   Los numeros `0009`, `0014` y `0015` siguen **reservados** para los hallazgos pendientes de la auditoria tecnica (guardas de classpath ya aplicadas, datos sensibles, fail-safety del logging, orden del filtro, deteccion de entorno, acoplamiento a Logback, versionado del esquema JSON). Se numeraron por tema, no por fecha de creacion, asi que el hueco es deliberado.
+   Los numeros `0009` y `0015` siguen **reservados** para los hallazgos pendientes de la auditoria tecnica (guardas de classpath ya aplicadas, datos sensibles, fail-safety del logging, orden del filtro, deteccion de entorno, acoplamiento a Logback, versionado del esquema JSON). Se numeraron por tema, no por fecha de creacion, asi que el hueco es deliberado.
 4. Determinar el impacto antes de modificar codigo.
 5. No duplicar decisiones arquitectonicas en archivos especificos de cada agente.
 6. Si existe una contradiccion entre este archivo, el codigo actual y otros documentos, reportarla antes de asumir cual es correcta.
@@ -285,7 +286,7 @@ Los payloads custom pasan por `StdlogEmitter`, quedan bajo la clave `stdlog` y s
   - **Fase 1**: `StdlogWebFilter` (`CONTROLLER_HTTP` + evento de error + `request_id`/exclusion en el Reactor Context; captura de body reactiva).
   - **Fase 2**: `StdlogWebClientExchangeFilter` lee el Reactor Context (`CLIENT_HTTP` correlacionado en apps WebFlux sin necesidad de context-propagation) y resuelve `operation` desde el `ServerWebExchange` que `StdlogWebFilter` pone en el Context. `StdlogWebClientAutoConfiguration` ya no esta gated a `SERVLET`. `StdlogReactorContext` movido a `core`. `StdlogReactorContextPropagationAutoConfiguration` registra un `ThreadLocalAccessor` de `request_id` -> para R2DBC en WebFlux, el `request_id` llega al MDC (y por tanto a `CLIENT_DB`) si el consumidor activa `Hooks.enableAutomaticContextPropagation()`. El starter no activa el hook. `route` no se propaga (menos util downstream).
   - **Fase 3**: `@StdlogExcluded` en handler methods reactivos (lo resuelve `StdlogWebFilter` del `HandlerMethod` tras la cadena; solo afecta `CONTROLLER_HTTP`/error). `StdlogWebExceptionHandler` (`@Order(HIGHEST_PRECEDENCE)`) guarda la excepcion real en un atributo del exchange para que el evento de error lleve `type`/`message`/`app_trace` reales. `StdlogCustomReactive` (`appbrain.stdlog.webflux`): variante `Mono<Void>` de `StdlogCustom` que restaura la correlacion del Reactor Context en el MDC; helper compartido `StdlogReactiveCorrelation` en `core`. `StdlogCustom`, `StdlogEmitter` y el listener R2DBC sin cambios.
-- Logback/logstash encoder (v9.0) es el mecanismo de salida JSON provisto.
+- Logback/logstash encoder (v9.0) es el mecanismo de salida JSON provisto. **Es tambien el unico**: el payload viaja integro en el `Marker` de logstash y el mensaje es la cadena literal `stdlog`, asi que bajo cualquier otro backend —Log4j2— el evento se pierde entero y en silencio. `ADR-0014` (propuesto) decide detectar el backend y emitir por dos caminos con salida equivalente; su spike verifico que `ObjectMessage` + `JsonTemplateLayout` produce el mismo JSON anidado.
 - `stdlog.mode=AUTO` cae a no productivo cuando `STDLOG_MODE` no esta definido.
 - `RestTemplate` se envuelve con `BufferingClientHttpRequestFactory` para poder leer bodies.
 - `RestClient` recibe el mismo `StdlogClientHttpInterceptor` mediante customizer.
