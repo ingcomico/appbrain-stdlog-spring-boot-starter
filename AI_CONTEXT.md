@@ -26,6 +26,7 @@ Esta rama es la **línea Spring Boot 3** del starter (ver `ADR-0005`). Tiene **p
 | Logging de R2DBC (`ADR-0007`) | `io.r2dbc:r2dbc-proxy` + `r2dbc-spi` `provided` | **idéntico** (código agnóstico: `io.r2dbc.*` + `org.slf4j.MDC`) |
 | Entrada WebFlux (`ADR-0008`, todas las fases) | `spring-webflux` + `io.micrometer:context-propagation` `provided`; `StdlogWebFilter`, `StdlogWebExceptionHandler`, `StdlogCustomReactive`, `StdlogReactiveCorrelation`, lectura del Reactor Context en `StdlogWebClientExchangeFilter`, `ThreadLocalAccessor` de `request_id` | **idéntico** (usa API de Spring 6/7 común: `WebFilter`, `WebExceptionHandler`, `HandlerMapping`, `AnnotatedElementUtils`, decoradores reactivos, `Mono.deferContextual`) |
 
+| Correlacion en toda linea de log (auditoria F-11) | provider `mdc` con `excludeMdcKeyName` de `stdlog.excluded`, dentro de `logback-spring-stdlog.xml` | **mismo efecto**, pero el fichero difiere por `ADR-0003` (`globalCustomFields` en vez de `pattern`), asi que el bloque `mdc` se aplico a mano sobre la version de esta rama |
 | Backend de logging (`ADR-0014`) | `core.backend` con escritores para Logback y Log4j2 y deteccion por `LoggerFactory.getILoggerFactory()`; `log4j-api` en `provided` | **idéntico** (SLF4J, la API de Log4j2 y el marker de logstash son los mismos en las dos lineas) |
 | Deteccion del entorno productivo (`ADR-0013`) | `StdlogModeResolver` con la cadena de perfiles y default seguro; `StdlogModeAutoConfiguration` lee el `Environment` | **idéntico** (`Environment` y perfiles existen igual en Boot 3) |
 | Fail-safety del logging (`ADR-0011`) | `StdlogFailsafe` en `core`, red en `StdlogEmitter` y bloque guardado en cada punto de instrumentacion; logger `appbrain.stdlog.internal` | **idéntico** (sólo usa SLF4J y JDK) |
@@ -46,7 +47,7 @@ Nada más difiere. El código de negocio (`StdlogEmitter`, `StdlogTraceCorrelati
 - El jar **no** empaqueta `META-INF/build-info.properties`: la ejecución del goal `build-info` se eliminó (auditoría F-03), porque podía secuestrar el `/actuator/info` del consumidor. La versión de librería se expone por `stdlog-version.properties`.
 - `README.md` documenta coordenadas `...:3.0.0-local` para el flujo de `mvn clean deploy` a `release/`.
 - Trinquete de cobertura (`ADR-0016`): `jacoco:check` en fase `verify`, mínimos de 85 % de líneas y 65 % de ramas. `mvn test` no lo ejecuta.
-- Suite: 309 tests, 0 fallos, verificado en JDK 17 y JDK 25.
+- Suite: 318 tests, 0 fallos, verificado en JDK 17 y JDK 25.
 
 ## Integración continua (`ADR-0016`)
 
